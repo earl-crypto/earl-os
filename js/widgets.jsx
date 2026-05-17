@@ -643,22 +643,59 @@ function ShowJournal() {
         { field: "curfew",     re: /curfew|hard.?out/i },
       ];
 
-      let filled = 0;
-      items.forEach(evt => {
-        const startDT = evt.start?.dateTime;
-        if (!startDT) return; // skip all-day events
-        const t = new Date(startDT);
-        const timeStr = t.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
-        MATCHERS.forEach(({ field, re }) => {
-          if (re.test(evt.summary || "")) {
-            update(field, timeStr);
-            filled++;
-          }
+      // Normalize any time string to HH:MM
+      const normalizeTime = (s) => {
+        const m = s.match(/(\d{1,2}):(\d{2})\s*([ap]m)?/i);
+        if (!m) return null;
+        let h = parseInt(m[1]), mn = parseInt(m[2]);
+        const p = m[3]?.toLowerCase();
+        if (p === 'pm' && h !== 12) h += 12;
+        if (p === 'am' && h === 12) h = 0;
+        return `${String(h).padStart(2,'0')}:${String(mn).padStart(2,'0')}`;
+      };
+
+      // Parse schedule lines from a block of text (event description / notes)
+      const parseNotes = (text) => {
+        if (!text) return {};
+        const plain = text.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&#\d+;/g, ' ');
+        const found = {};
+        plain.split(/\n|<br\s*\/?>/i).forEach(line => {
+          const timeMatch = line.match(/\b(\d{1,2}:\d{2}\s*(?:[ap]m)?)\b/i);
+          if (!timeMatch) return;
+          const t = normalizeTime(timeMatch[1]);
+          if (!t) return;
+          MATCHERS.forEach(({ field, re }) => {
+            if (!found[field] && re.test(line)) found[field] = t;
+          });
         });
-        if (/venue|location/i.test(evt.summary || "") && evt.location) {
-          update("venue", evt.location);
-          filled++;
+        return found;
+      };
+
+      const matched = {};
+
+      items.forEach(evt => {
+        // Parse description/notes first — one show event often has the whole schedule
+        const fromNotes = parseNotes(evt.description || "");
+        Object.assign(matched, fromNotes); // later events don't overwrite earlier matches
+
+        // Also match timed events by their title
+        const startDT = evt.start?.dateTime;
+        if (startDT) {
+          const t = new Date(startDT);
+          const timeStr = `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
+          MATCHERS.forEach(({ field, re }) => {
+            if (!matched[field] && re.test(evt.summary || "")) matched[field] = timeStr;
+          });
         }
+
+        // Grab venue from event location if present
+        if (!matched._venue && evt.location) matched._venue = evt.location;
+      });
+
+      let filled = 0;
+      Object.entries(matched).forEach(([field, val]) => {
+        if (field === "_venue") { update("venue", val); filled++; }
+        else { update(field, val); filled++; }
       });
 
       setImportMsg(filled ? `Filled ${filled} field${filled > 1 ? "s" : ""} from Calendar` : "No matching events found");
