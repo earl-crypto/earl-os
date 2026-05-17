@@ -204,17 +204,10 @@ function GmailWidget() {
   );
 }
 
-// ─── TASK LIST (generic, reused 3x) ──────────────────────────────────────────
-function TaskList({ storageKey, defaults, accent, emptyText, dimmed }) {
-  const [tasks, setTasks] = usePersisted(storageKey, defaults);
+// ─── TASK LIST (one-off tasks) ───────────────────────────────────────────────
+function TaskList({ accent, emptyText, dimmed }) {
+  const { oneoffTasks: tasks, toggleOneoff, addOneoff, removeOneoff } = useData();
   const [newText, setNewText] = React.useState("");
-  const toggle = (i) => setTasks(tasks.map((t, j) => j === i ? { ...t, done: !t.done } : t));
-  const remove = (i) => setTasks(tasks.filter((_, j) => j !== i));
-  const add = () => {
-    if (!newText.trim()) return;
-    setTasks([...tasks, { text: newText.trim(), done: false }]);
-    setNewText("");
-  };
   const done = tasks.filter(t => t.done).length;
   return (
     <div className={"tasks" + (dimmed ? " tasks-dim" : "")}>
@@ -224,15 +217,15 @@ function TaskList({ storageKey, defaults, accent, emptyText, dimmed }) {
       </div>
       <div className="tasks-list">
         {tasks.length === 0 && <div className="tasks-empty">{emptyText || "Nothing here."}</div>}
-        {tasks.map((t, i) => (
-          <div key={i} className={"task" + (t.done ? " task-done" : "")}>
+        {tasks.map(t => (
+          <div key={t.id} className={"task" + (t.done ? " task-done" : "")}>
             <button
               className="task-check"
               style={t.done ? { background: accent, borderColor: accent } : {}}
-              onClick={() => toggle(i)}
+              onClick={() => toggleOneoff(t.id)}
             >{t.done ? "✓" : ""}</button>
             <span className="task-text">{t.text}</span>
-            <button className="task-x" onClick={() => remove(i)}>×</button>
+            <button className="task-x" onClick={() => removeOneoff(t.id)}>×</button>
           </div>
         ))}
       </div>
@@ -241,7 +234,12 @@ function TaskList({ storageKey, defaults, accent, emptyText, dimmed }) {
           className="bare-input task-input"
           value={newText}
           onChange={(e) => setNewText(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && add()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && newText.trim()) {
+              addOneoff(newText.trim());
+              setNewText("");
+            }
+          }}
           placeholder="+ add task"
         />
       </div>
@@ -251,7 +249,7 @@ function TaskList({ storageKey, defaults, accent, emptyText, dimmed }) {
 
 // ─── QUICK NOTES ─────────────────────────────────────────────────────────────
 function QuickNotes() {
-  const [text, setText] = usePersisted("notes", "");
+  const { notes: text, setNotes: setText } = useData();
   return (
     <div className="notes">
       <textarea
@@ -271,9 +269,9 @@ function QuickNotes() {
 // ─── PERSONAL JOURNAL ────────────────────────────────────────────────────────
 function PersonalJournal() {
   const dayKey = new Date().toISOString().slice(0, 10);
-  const [entries, setEntries] = usePersisted("journal:personal", {});
-  const entry = entries[dayKey] || { mood: 3, energy: 3, grateful: "", reflection: "", win: "" };
-  const update = (k, v) => setEntries({ ...entries, [dayKey]: { ...entry, [k]: v } });
+  const { journalPersonal, updatePersonalJournal } = useData();
+  const entry = journalPersonal[dayKey] || { mood: 3, energy: 3, grateful: "", reflection: "", win: "" };
+  const update = (k, v) => updatePersonalJournal(dayKey, k, v);
 
   const Scale = ({ label, value, onChange, colors }) => (
     <div className="scale-row">
@@ -319,7 +317,7 @@ function PersonalJournal() {
 // ─── SHOW JOURNAL (show days only) ───────────────────────────────────────────
 function ShowJournal() {
   const dayKey = new Date().toISOString().slice(0, 10);
-  const [entries, setEntries] = usePersisted("journal:show", {});
+  const { journalShow, updateShowJournal } = useData();
   const blank = {
     venue: "The Fillmore — San Francisco, CA",
     crewCall: "07:30", tLoadIn: "09:00", soundcheck: "15:00", doors: "20:00", showTime: "20:30", curfew: "23:00",
@@ -333,8 +331,8 @@ function ShowJournal() {
     depart: "",
     general: "",
   };
-  const entry = { ...blank, ...(entries[dayKey] || {}) };
-  const update = (k, v) => setEntries({ ...entries, [dayKey]: { ...entry, [k]: v } });
+  const entry = { ...blank, ...(journalShow[dayKey] || {}) };
+  const update = (k, v) => updateShowJournal(dayKey, k, v);
 
   const Time = ({ k, label }) => (
     <div className="show-time">
@@ -409,15 +407,11 @@ function ShowJournal() {
   );
 }
 
-// ─── REPEATING TASK LIST (template + per-day state) ─────────────────────────
-// Use for daily repeating lists (Office). The template carries over;
-// the checked state resets at the start of each day.
-function RepeatingTaskList({ templateKey, stateKeyBase, dateKey, accent, seedTexts, label, dimmed }) {
-  const { tasks, toggle, removeTask, addTask } = useTemplatedTasks(
-    templateKey,
-    stateKeyBase + ":" + dateKey,
-    seedTexts,
-  );
+// ─── REPEATING TASK LIST (office daily tasks) ────────────────────────────────
+function RepeatingTaskList({ accent, dimmed }) {
+  const { getTasksForKind, toggleTask, addTask: ctxAddTask, removeTask: ctxRemoveTask } = useData();
+  const dateKey = new Date().toISOString().slice(0, 10);
+  const tasks = getTasksForKind("office", dateKey);
   const [newText, setNewText] = React.useState("");
   const done = tasks.filter(t => t.done).length;
 
@@ -435,10 +429,10 @@ function RepeatingTaskList({ templateKey, stateKeyBase, dateKey, accent, seedTex
             <button
               className="task-check"
               style={t.done ? { background: accent, borderColor: accent } : {}}
-              onClick={() => toggle(t.id)}
+              onClick={() => toggleTask("office", t.id, dateKey)}
             >{t.done ? "✓" : ""}</button>
             <span className="task-text">{t.text}</span>
-            <button className="task-x" onClick={() => removeTask(t.id)}>×</button>
+            <button className="task-x" onClick={() => ctxRemoveTask("office", t.id)}>×</button>
           </div>
         ))}
       </div>
@@ -449,7 +443,7 @@ function RepeatingTaskList({ templateKey, stateKeyBase, dateKey, accent, seedTex
           onChange={(e) => setNewText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && newText.trim()) {
-              addTask(newText.trim());
+              ctxAddTask("office", newText.trim());
               setNewText("");
             }
           }}
@@ -506,7 +500,7 @@ function ShowTasksWidget({ phase, showDate }) {
     },
   ];
 
-  const [expanded, setExpanded] = usePersisted("tasks:show:exp", { pre: phase === "pre", show: phase === "show", post: phase === "post" });
+  const [expanded, setExpanded] = React.useState({ pre: phase === "pre", show: phase === "show", post: phase === "post" });
 
   return (
     <div className="show-tasks">
@@ -525,10 +519,11 @@ function ShowTasksWidget({ phase, showDate }) {
 }
 
 function ShowTaskPhase({ phase, showDate, active, isOpen, onToggle }) {
-  const stateKey = `tasks:show:${phase.id}:state:${showDate || "unscheduled"}`;
-  const { tasks, toggle, removeTask, addTask } = useTemplatedTasks(
-    phase.templateKey, stateKey, phase.seeds,
-  );
+  const { getTasksForKind, toggleTask, addTask: ctxAddTask, removeTask: ctxRemoveTask } = useData();
+  const kindMap = { pre: "show:pre", show: "show:day", post: "show:post" };
+  const kind = kindMap[phase.id];
+  const scopeDate = showDate || new Date().toISOString().slice(0, 10);
+  const tasks = getTasksForKind(kind, scopeDate);
   const [newText, setNewText] = React.useState("");
   const done = tasks.filter(t => t.done).length;
 
@@ -550,10 +545,10 @@ function ShowTaskPhase({ phase, showDate, active, isOpen, onToggle }) {
               <button
                 className="task-check"
                 style={t.done ? { background: phase.accent, borderColor: phase.accent } : {}}
-                onClick={() => toggle(t.id)}
+                onClick={() => toggleTask(kind, t.id, scopeDate)}
               >{t.done ? "✓" : ""}</button>
               <span className="task-text">{t.text}</span>
-              <button className="task-x" onClick={() => removeTask(t.id)}>×</button>
+              <button className="task-x" onClick={() => ctxRemoveTask(kind, t.id)}>×</button>
             </div>
           ))}
           <div className="task-add">
@@ -563,7 +558,7 @@ function ShowTaskPhase({ phase, showDate, active, isOpen, onToggle }) {
               onChange={(e) => setNewText(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && newText.trim()) {
-                  addTask(newText.trim());
+                  ctxAddTask(kind, newText.trim());
                   setNewText("");
                 }
               }}
@@ -577,16 +572,16 @@ function ShowTaskPhase({ phase, showDate, active, isOpen, onToggle }) {
 }
 
 // ─── SHOW DATES MANAGER (lives in Tweaks panel) ─────────────────────────────
-function ShowDatesManager({ dates, setDates }) {
+function ShowDatesManager({ dates, addDate, removeDate }) {
   const [newDate, setNewDate] = React.useState("");
   const sorted = [...dates].sort();
   const todayStr = new Date().toISOString().slice(0, 10);
   const add = () => {
     if (!newDate || dates.includes(newDate)) return;
-    setDates([...dates, newDate]);
+    addDate(newDate);
     setNewDate("");
   };
-  const remove = (d) => setDates(dates.filter(x => x !== d));
+  const remove = (d) => removeDate(d);
   const fmt = (s) => {
     const d = new Date(s + "T12:00:00");
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });

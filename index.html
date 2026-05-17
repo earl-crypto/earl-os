@@ -1094,6 +1094,26 @@
     width: 24px; height: 24px; border-radius: 50%; object-fit: cover;
     display: block;
   }
+
+  /* ───── App loading screen ────────────────────────────────────────────── */
+  .app-loading {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px;
+    background: linear-gradient(180deg, #0a1426 0%, #050b16 100%);
+    color: var(--text-faint);
+    font-family: var(--ff-display);
+    font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase;
+  }
+  .app-loading img {
+    width: 56px; height: 56px; border-radius: 10px; object-fit: cover;
+    opacity: 0.75;
+    animation: pulse-load 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse-load {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 0.9; }
+  }
 </style>
 </head>
 <body>
@@ -1111,6 +1131,7 @@
 <script type="text/babel" src="js/window.jsx"></script>
 <script type="text/babel" src="js/widgets.jsx"></script>
 <script type="text/babel" src="js/auth.jsx"></script>
+<script type="text/babel" src="js/db.jsx"></script>
 <script type="text/babel" src="js/app.jsx"></script>
 
 </body>

@@ -1,20 +1,5 @@
 // Earl OS — main app.
 
-const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
-  "density": "regular",
-  "accent": "balanced",
-  "showGrid": false,
-  "wallpaper": "navy"
-}/*EDITMODE-END*/;
-
-const DEFAULT_PROFILE = {
-  name: "Earl Neal",
-  title: "Founder · Tour Production Manager",
-  status: "available",
-  event: "Maverick City — Spring '26 Tour",
-  venue: "The Fillmore · San Francisco, CA",
-};
-
 // Initial window layout, calibrated for ~1480×900 viewport.
 const LAYOUTS = {
   personal:     { pos: { x:  16, y:  52 }, size: { w: 320, h: 388 } },
@@ -37,16 +22,8 @@ function toDateStr(d) { return d.toISOString().slice(0, 10); }
 function addDays(d, n) { return new Date(d.getTime() + n * 86400000); }
 
 function App({ session }) {
-  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
-  const [showDay, setShowDay] = usePersisted("mode:show", true);
-  const [profile, setProfile] = usePersisted("profile", DEFAULT_PROFILE);
-  const [closed, setClosed] = usePersisted("closed", {});
-
-  // Show schedule — dates user is on the road. Defaults to today + a few demo dates.
-  const [showDates, setShowDates] = usePersisted("showDates", (() => {
-    const today = new Date();
-    return [toDateStr(today), toDateStr(addDays(today, 1)), toDateStr(addDays(today, 7))];
-  })());
+  const { profile, setProfile, showDay, setShowDay, tweaks, setTweak, closed, setClosed, showDates, addShowDate, removeShowDate } = useData();
+  const t = tweaks;
 
   // Compute today's relationship to nearest show date.
   const showContext = React.useMemo(() => {
@@ -54,9 +31,9 @@ function App({ session }) {
     const todayS = toDateStr(today);
     const tomS   = toDateStr(addDays(today, 1));
     const yestS  = toDateStr(addDays(today, -1));
-    if (showDates.includes(todayS)) return { phase: "show", label: "today" };
-    if (showDates.includes(tomS))   return { phase: "pre",  label: "show tomorrow" };
-    if (showDates.includes(yestS))  return { phase: "post", label: "day after" };
+    if (showDates.includes(todayS)) return { phase: "show", label: "today",        showDate: todayS };
+    if (showDates.includes(tomS))   return { phase: "pre",  label: "show tomorrow", showDate: tomS };
+    if (showDates.includes(yestS))  return { phase: "post", label: "day after",     showDate: yestS };
     return null;
   }, [showDates]);
 
@@ -183,21 +160,7 @@ function App({ session }) {
           defaultPos={LAYOUTS.tasksNonShow.pos} defaultSize={LAYOUTS.tasksNonShow.size}
           hidden={closed.tasksNonShow} onClose={() => close("tasksNonShow")}
         >
-          <RepeatingTaskList
-            templateKey="tasks:office:template"
-            stateKeyBase="tasks:office:state"
-            dateKey={toDateStr(new Date())}
-            accent="var(--blue)"
-            seedTexts={[
-              "Inbox to zero before 10a",
-              "Review next advance pack",
-              "Travel & per diem reconciled",
-              "Vendor invoices reviewed",
-              "Weekly forecast call",
-              "30 min workout / walk",
-              "End-of-day tomorrow prep",
-            ]}
-          />
+          <RepeatingTaskList accent="var(--blue)" />
         </Window>
 
         <Window
@@ -205,18 +168,7 @@ function App({ session }) {
           defaultPos={LAYOUTS.tasksOneOff.pos} defaultSize={LAYOUTS.tasksOneOff.size}
           hidden={closed.tasksOneOff} onClose={() => close("tasksOneOff")}
         >
-          <TaskList
-            storageKey="tasks:oneoff"
-            accent="var(--amber)"
-            defaults={[
-              { text: "Renew passport (exp Sep)", done: false },
-              { text: "EU work permit — sign + return", done: false },
-              { text: "Q2 invoice → artist mgmt", done: false },
-              { text: "Wire transfer · lighting vendor", done: false },
-              { text: "Book dental cleaning", done: false },
-              { text: "Update tour book template", done: true },
-            ]}
-          />
+          <TaskList accent="var(--amber)" />
         </Window>
 
         <Window
@@ -283,7 +235,7 @@ function App({ session }) {
         <div className="tweak-note">
           Show Tasks panel auto-appears the day before, day of, and day after each show date.
         </div>
-        <ShowDatesManager dates={showDates} setDates={setShowDates} />
+        <ShowDatesManager dates={showDates} addDate={addShowDate} removeDate={removeShowDate} />
         <TweakSection label="Layout" />
         <TweakButton onClick={() => {
           if (!confirm("Reset all window positions and sizes?")) return;
@@ -312,9 +264,13 @@ function useNow() {
 
 function Root() {
   const session = useAuth();
-  if (session === undefined) return null; // still loading
+  if (session === undefined) return null;
   if (!session) return <LoginScreen />;
-  return <App session={session} />;
+  return (
+    <DataProvider session={session}>
+      <App session={session} />
+    </DataProvider>
+  );
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<Root />);
