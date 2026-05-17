@@ -2,8 +2,6 @@
 // Loads all user data on login, migrates localStorage on first sign-in,
 // and exposes read/write operations via DataContext.
 
-console.log("[earl-os] db.jsx loaded v4");
-
 const DATA_CTX = React.createContext(null);
 function useData() { return React.useContext(DATA_CTX); }
 
@@ -37,7 +35,6 @@ function DataProvider({ session, children }) {
   const uid = session.user.id;
   const providerToken = session.provider_token || null;
   const [ready, setReady] = React.useState(false);
-  console.log("[earl-os] DataProvider mounting, uid:", uid?.slice(0, 8));
 
   // ── Core state (initialised from localStorage as fast default) ─────────────
   const [profile,   _setProfile]   = React.useState(LS.get("profile", DEFAULT_PROFILE));
@@ -218,7 +215,6 @@ function DataProvider({ session, children }) {
 
   async function syncNotes() {
     const { data, error } = await _sb.from("notes").select("text").eq("user_id", uid).single();
-    console.log("[earl-os] syncNotes →", { data, error: error?.message });
     if (data != null) {
       _setNotes(data.text || "");
     } else {
@@ -257,16 +253,11 @@ function DataProvider({ session, children }) {
   }
 
   async function syncTasks() {
-    const [{ data: templates, error: tplErr }, { data: stateRows, error: stateErr }, { data: oneoffs, error: oneoffErr }] = await Promise.all([
+    const [{ data: templates, error: tplErr }, { data: stateRows }, { data: oneoffs }] = await Promise.all([
       _sb.from("task_templates").select("*").eq("user_id", uid).order("ord"),
       _sb.from("task_state").select("*").eq("user_id", uid),
       _sb.from("tasks_oneoff").select("*").eq("user_id", uid).order("ord"),
     ]);
-    console.log("[earl-os] syncTasks →", {
-      templates: templates?.length ?? tplErr?.message,
-      stateRows: stateRows?.length ?? stateErr?.message,
-      oneoffs: oneoffs?.length ?? oneoffErr?.message,
-    });
 
     // null means query error — bail rather than clobber with seed data
     if (tplErr || templates === null) {
