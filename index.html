@@ -639,13 +639,25 @@
     font-size: 16px; font-weight: 600; color: var(--text);
     letter-spacing: 0.02em;
   }
+  .show-hd-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
   .show-hd-date {
     font-family: var(--ff-mono); font-size: 10px;
     color: var(--red-bright); letter-spacing: 0.1em;
-    flex-shrink: 0;
+  }
+  .show-cal-btn {
+    font-family: var(--ff-mono); font-size: 10px; letter-spacing: 0.06em;
+    background: var(--surface-2); border: 1px solid var(--border-soft);
+    color: var(--text-dim); border-radius: 4px; padding: 2px 7px;
+    cursor: pointer; transition: color .15s, border-color .15s;
+  }
+  .show-cal-btn:hover:not(:disabled) { color: var(--text); border-color: var(--blue); }
+  .show-cal-btn:disabled { opacity: .5; cursor: default; }
+  .show-import-msg {
+    font-family: var(--ff-mono); font-size: 10px;
+    color: var(--blue); letter-spacing: 0.04em;
   }
   .show-times {
-    display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px;
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px;
   }
   .show-time {
     display: flex; flex-direction: column; gap: 2px;

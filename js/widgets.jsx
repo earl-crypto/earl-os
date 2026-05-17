@@ -603,7 +603,7 @@ function PersonalJournal() {
 // ─── SHOW JOURNAL (show days only) ───────────────────────────────────────────
 function ShowJournal() {
   const dayKey = new Date().toISOString().slice(0, 10);
-  const { journalShow, updateShowJournal } = useData();
+  const { journalShow, updateShowJournal, providerToken } = useData();
   const blank = {
     venue: "The Fillmore — San Francisco, CA",
     crew_call: "07:30", t_load_in: "09:00", soundcheck: "15:00", doors: "20:00",
@@ -613,6 +613,62 @@ function ShowJournal() {
   };
   const entry = { ...blank, ...(journalShow[dayKey] || {}) };
   const update = (k, v) => updateShowJournal(dayKey, k, v);
+
+  const [importing, setImporting] = React.useState(false);
+  const [importMsg, setImportMsg] = React.useState("");
+
+  const importFromCalendar = async () => {
+    if (!providerToken) { setImportMsg("No Google token — sign out and back in."); return; }
+    setImporting(true);
+    setImportMsg("");
+    try {
+      const start = `${dayKey}T00:00:00Z`;
+      const end   = `${dayKey}T23:59:59Z`;
+      const r = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(start)}&timeMax=${encodeURIComponent(end)}&singleEvents=true&orderBy=startTime`,
+        { headers: { Authorization: `Bearer ${providerToken}` } }
+      );
+      if (r.status === 401) { setImportMsg("Token expired — sign out and back in."); return; }
+      if (!r.ok) { setImportMsg(`Calendar error (${r.status})`); return; }
+
+      const { items = [] } = await r.json();
+
+      const MATCHERS = [
+        { field: "crew_call",  re: /crew.?call|call.?time/i },
+        { field: "t_load_in",  re: /load.?in/i },
+        { field: "soundcheck", re: /sound.?check/i },
+        { field: "doors",      re: /\bdoors?\b/i },
+        { field: "show_time",  re: /\bshow\b|showtime|performance|set.?time/i },
+        { field: "emcee_time", re: /emcee|\bmc\b/i },
+        { field: "curfew",     re: /curfew|hard.?out/i },
+      ];
+
+      let filled = 0;
+      items.forEach(evt => {
+        const startDT = evt.start?.dateTime;
+        if (!startDT) return; // skip all-day events
+        const t = new Date(startDT);
+        const timeStr = t.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+        MATCHERS.forEach(({ field, re }) => {
+          if (re.test(evt.summary || "")) {
+            update(field, timeStr);
+            filled++;
+          }
+        });
+        if (/venue|location/i.test(evt.summary || "") && evt.location) {
+          update("venue", evt.location);
+          filled++;
+        }
+      });
+
+      setImportMsg(filled ? `Filled ${filled} field${filled > 1 ? "s" : ""} from Calendar` : "No matching events found");
+    } catch (e) {
+      setImportMsg("Import failed: " + e.message);
+    } finally {
+      setImporting(false);
+      setTimeout(() => setImportMsg(""), 4000);
+    }
+  };
 
   const buildHtml = () => {
     const dateStr = new Date(dayKey).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -661,7 +717,13 @@ function ShowJournal() {
         <div className="show-hd-venue">
           <input className="bare-input show-venue" value={entry.venue} onChange={(e) => update("venue", e.target.value)} />
         </div>
-        <div className="show-hd-date">SHOW #042 · {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>
+        <div className="show-hd-right">
+          {importMsg && <span className="show-import-msg">{importMsg}</span>}
+          <button className="show-cal-btn" onClick={importFromCalendar} disabled={importing} title="Import times from Google Calendar">
+            {importing ? "…" : "↓ Cal"}
+          </button>
+          <div className="show-hd-date">SHOW #042 · {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>
+        </div>
       </div>
 
       <div className="show-times">
