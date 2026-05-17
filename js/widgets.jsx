@@ -61,7 +61,9 @@ async function _fetchCalendarEvents(token, dateStr) {
       /crew|call sheet|debrief/.test(t)           ? 'crew'     :
       /vip|meet.*greet|talent|artist/.test(t)     ? 'talent'   :
       /personal|workout|gym|lunch|dinner/.test(t) ? 'personal' : 'ops';
-    return { t: s ? fmt(s) : 'All day', end: en ? fmt(en) : '', title: e.summary || '(no title)', tag };
+    const desc = (e.description || '').toLowerCase();
+    const venueType = /#outdoor\b/.test(desc) ? 'outdoor' : /#indoor\b/.test(desc) ? 'indoor' : null;
+    return { t: s ? fmt(s) : 'All day', end: en ? fmt(en) : '', title: e.summary || '(no title)', tag, venueType };
   });
 }
 
@@ -199,7 +201,20 @@ function CalendarWidget() {
         {!cal.err && (events || []).map((e, i) => (
           <div key={i} className="cal-ev" style={{ "--evc": tagColor(e.tag) }}>
             <div className="cal-ev-time">{e.t}{e.end && <span className="cal-ev-end">→ {e.end}</span>}</div>
-            <div className="cal-ev-title">{e.title}</div>
+            <div className="cal-ev-title">
+              {e.title}
+              {e.venueType && (
+                <span style={{
+                  marginLeft: 6, fontSize: "9px", letterSpacing: "0.1em",
+                  padding: "1px 5px", borderRadius: 3, fontFamily: "var(--ff-display)",
+                  fontWeight: 600, textTransform: "uppercase", verticalAlign: "middle",
+                  background: e.venueType === "outdoor" ? "rgba(212,164,55,0.15)" : "rgba(66,103,163,0.15)",
+                  color: e.venueType === "outdoor" ? "var(--amber)" : "var(--blue-bright)",
+                }}>
+                  {e.venueType === "outdoor" ? "Outdoor" : "Indoor"}
+                </span>
+              )}
+            </div>
           </div>
         ))}
       </div>
