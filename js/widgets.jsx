@@ -42,6 +42,43 @@ async function _fetchGmailMessages(token) {
   });
 }
 
+// ─── Weather helpers ──────────────────────────────────────────────────────────
+
+async function _fetchWeather(apiKey, lat, lon) {
+  const loc = `${lat},${lon}`;
+  const base = `https://api.tomorrow.io/v4/weather`;
+  const [rt, fc] = await Promise.all([
+    fetch(`${base}/realtime?location=${loc}&units=imperial&apikey=${apiKey}`),
+    fetch(`${base}/forecast?location=${loc}&timesteps=1h,1d&units=imperial&apikey=${apiKey}`),
+  ]);
+  if (rt.status === 401 || fc.status === 401) throw Object.assign(new Error('auth'), { code: 401 });
+  if (!rt.ok || !fc.ok) throw new Error('Weather error');
+  return Promise.all([rt.json(), fc.json()]);
+}
+
+function _wxCode(code) {
+  if ([1000, 1100].includes(code)) return 'sun';
+  if (code === 1101) return 'pcloud';
+  if ([1102, 1001, 2000, 2100].includes(code)) return 'cloud';
+  if ([4000, 4001, 4200, 4201, 5000, 5001, 5100, 5101, 6000, 6001, 7000, 7101, 7102].includes(code)) return 'rain';
+  if (code === 8000) return 'storm';
+  return 'cloud';
+}
+
+function _wxLabel(code) {
+  return ({
+    1000:'Clear', 1100:'Mostly Clear', 1101:'Partly Cloudy', 1102:'Mostly Cloudy',
+    1001:'Cloudy', 2000:'Fog', 2100:'Light Fog', 4000:'Drizzle', 4001:'Rain',
+    4200:'Light Rain', 4201:'Heavy Rain', 5000:'Snow', 5001:'Flurries',
+    5100:'Light Snow', 5101:'Heavy Snow', 6000:'Freezing Drizzle', 6001:'Freezing Rain',
+    7000:'Ice Pellets', 8000:'Thunderstorm',
+  })[code] || 'Variable';
+}
+
+function _windDir(deg) {
+  return ['N','NE','E','SE','S','SW','W','NW'][Math.round((deg % 360) / 45) % 8];
+}
+
 async function _fetchCalendarEvents(token, dateStr) {
   const start = new Date(dateStr + 'T00:00:00');
   const end   = new Date(dateStr + 'T23:59:59');
@@ -712,7 +749,138 @@ Object.assign(window, { ShowTasksWidget, ShowDatesManager,
   WeatherWidget, NewsWidget,
 });
 
-// ─── WEATHER (outdoor events focus) ──────────────────────────────────────────
+// ─── WEATHER ─────────────────────────────────────────────────────────────────
+function _WeatherMsg({ msg, onRetry }) {
+  return (
+    <div className="weather" style={{ padding: 20, color: "var(--text-faint)", fontSize: 12, lineHeight: 1.7 }}>
+      {msg}
+      {onRetry && (
+        <button onClick={onRetry} style={{ display: "block", marginTop: 10, background: "none", border: "1px solid var(--border)", color: "var(--text-dim)", padding: "4px 12px", borderRadius: 4, cursor: "pointer", fontSize: 11 }}>
+          Retry
+        </button>
+      )}
+    </div>
+  );
+}
+
+function WeatherWidget() {
+  const { tweaks, showDates } = useData();
+  const apiKey = (tweaks.weatherKey || '').trim();
+  const [wx, setWx]       = React.useState(null);
+  const [err, setErr]     = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+
+  const load = React.useCallback(() => {
+    if (!apiKey) return;
+    setLoading(true); setErr(null);
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        _fetchWeather(apiKey, coords.latitude, coords.longitude)
+          .then(([rt, fc]) => { setWx({ rt, fc }); setLoading(false); })
+          .catch(e => { setErr(e.code === 401 ? 'key' : 'error'); setLoading(false); });
+      },
+      () => { setErr('geo'); setLoading(false); }
+    );
+  }, [apiKey]);
+
+  React.useEffect(load, [load]);
+
+  if (!apiKey) return (
+    <_WeatherMsg msg="Open Tweaks (bottom-right ⚙) → Weather → paste your Tomorrow.io API key to enable live weather." />
+  );
+  if (loading && !wx) return <_WeatherMsg msg="Loading weather…" />;
+  if (err === 'geo')   return <_WeatherMsg msg="Location access denied — allow location in your browser." onRetry={load} />;
+  if (err === 'key')   return <_WeatherMsg msg="Invalid API key — check your Tomorrow.io key in Tweaks." onRetry={load} />;
+  if (err)             return <_WeatherMsg msg="Could not load weather." onRetry={load} />;
+  if (!wx) return null;
+
+  const rt  = wx.rt.data.values;
+  const loc = wx.rt.location;
+  const cityName = (loc.name || '').split(',')[0];
+
+  const daily   = wx.fc.timelines?.daily  || [];
+  const hourly  = wx.fc.timelines?.hourly || [];
+  const todayD  = daily[0]?.values || {};
+  const hi = Math.round(todayD.temperatureMax ?? rt.temperature);
+  const lo = Math.round(todayD.temperatureMin ?? rt.temperature);
+
+  const now = new Date();
+  const nextHours = hourly.filter(h => new Date(h.time) > now).slice(0, 5).map(h => ({
+    t:    new Date(h.time).toLocaleTimeString('en-US', { hour: 'numeric', hour12: true }).toLowerCase().replace(' ', ''),
+    temp: Math.round(h.values.temperature),
+    icon: _wxCode(h.values.weatherCode),
+  }));
+
+  const dailyMap = {};
+  daily.forEach(d => { dailyMap[d.time.slice(0, 10)] = d.values; });
+  const showForecast = showDates.map(sd => {
+    const d = dailyMap[sd];
+    if (!d) return null;
+    const rain = Math.round(d.precipitationProbabilityMax || 0);
+    return {
+      date: sd,
+      temp: Math.round(d.temperatureMax),
+      icon: _wxCode(d.weatherCode),
+      risk: rain > 30 || d.weatherCode === 8000 ? 'high' : 'low',
+      note: rain > 10 ? `${rain}% rain chance` : 'Clear · low risk',
+    };
+  }).filter(Boolean);
+
+  const fmtSD = s => new Date(s + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
+
+  return (
+    <div className="weather">
+      <div className="wx-hero">
+        <div className="wx-hero-icon"><WxIcon kind={_wxCode(rt.weatherCode)} size={48} /></div>
+        <div className="wx-hero-temp">{Math.round(rt.temperature)}°</div>
+        <div className="wx-hero-meta">
+          <div className="wx-hero-city">{cityName}</div>
+          <div className="wx-hero-cond">{_wxLabel(rt.weatherCode)}</div>
+          <button onClick={load} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-faint)", fontSize: "10px", padding: 0 }}>↻ refresh</button>
+        </div>
+      </div>
+
+      <div className="wx-stats">
+        <div className="wx-stat"><span className="wx-stat-label">HI/LO</span><span className="wx-stat-val">{hi}°/{lo}°</span></div>
+        <div className="wx-stat"><span className="wx-stat-label">WIND</span><span className="wx-stat-val">{Math.round(rt.windSpeed)} {_windDir(rt.windDirection)}</span></div>
+        <div className="wx-stat"><span className="wx-stat-label">HUMID</span><span className="wx-stat-val">{Math.round(rt.humidity)}%</span></div>
+        <div className="wx-stat"><span className="wx-stat-label">GUSTS</span><span className="wx-stat-val">{Math.round(rt.windGust)} mph</span></div>
+      </div>
+
+      {nextHours.length > 0 && (
+        <>
+          <div className="wx-section-label">Next few hours</div>
+          <div className="wx-hourly">
+            {nextHours.map((h, i) => (
+              <div key={i} className="wx-hour">
+                <div className="wx-hour-t">{h.t}</div>
+                <div className="wx-hour-icon"><WxIcon kind={h.icon} size={18} /></div>
+                <div className="wx-hour-temp">{h.temp}°</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {showForecast.length > 0 && (
+        <>
+          <div className="wx-section-label">Show date forecast</div>
+          <div className="wx-upcoming">
+            {showForecast.map((s, i) => (
+              <div key={i} className={"wx-up wx-risk-" + s.risk}>
+                <div className="wx-up-date">{fmtSD(s.date)}</div>
+                <div className="wx-up-icon"><WxIcon kind={s.icon} size={18} /></div>
+                <div className="wx-up-temp">{s.temp}°</div>
+                <div className="wx-up-place"><div className="wx-up-note">{s.note}</div></div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function WxIcon({ kind, size = 22 }) {
   const ICONS = {
     sun: (
@@ -755,76 +923,6 @@ function WxIcon({ kind, size = 22 }) {
   return <span className="wx-i" style={{ display: "inline-flex" }}>{ICONS[kind] || ICONS.cloud}</span>;
 }
 
-function WeatherWidget() {
-  const current = {
-    city: "San Francisco, CA",
-    venue: "The Fillmore — INDOOR",
-    temp: 58, condition: "Partly Cloudy", icon: "pcloud",
-    high: 64, low: 52, wind: "12 NW", humidity: 72,
-    feel: 56, gusts: "22 mph",
-  };
-  const hourly = [
-    { t: "3p",  temp: 62, icon: "pcloud" },
-    { t: "5p",  temp: 60, icon: "pcloud" },
-    { t: "7p",  temp: 58, icon: "cloud" },
-    { t: "9p",  temp: 55, icon: "cloud" },
-    { t: "11p", temp: 53, icon: "cloud" },
-  ];
-  const upcoming = [
-    { date: "MAY 22", venue: "BottleRock Napa",    city: "Napa, CA",      temp: 78, icon: "sun",    risk: "low",  note: "Heat warning 1–4p" },
-    { date: "MAY 25", venue: "Edgefield Lawn",     city: "Troutdale, OR", temp: 64, icon: "rain",   risk: "high", note: "60% rain, doors-curfew" },
-    { date: "JUN 02", venue: "Red Rocks",          city: "Morrison, CO",  temp: 81, icon: "sun",    risk: "low",  note: "Clear · low wind" },
-    { date: "JUN 14", venue: "Bonnaroo MainStage", city: "Manchester, TN",temp: 88, icon: "storm",  risk: "high", note: "Afternoon T-storms" },
-  ];
-
-  return (
-    <div className="weather">
-      <div className="wx-hero">
-        <div className="wx-hero-icon"><WxIcon kind={current.icon} size={48} /></div>
-        <div className="wx-hero-temp">{current.temp}°</div>
-        <div className="wx-hero-meta">
-          <div className="wx-hero-city">{current.city}</div>
-          <div className="wx-hero-cond">{current.condition}</div>
-          <div className="wx-hero-venue">{current.venue}</div>
-        </div>
-      </div>
-
-      <div className="wx-stats">
-        <div className="wx-stat"><span className="wx-stat-label">HI/LO</span><span className="wx-stat-val">{current.high}°/{current.low}°</span></div>
-        <div className="wx-stat"><span className="wx-stat-label">WIND</span><span className="wx-stat-val">{current.wind}</span></div>
-        <div className="wx-stat"><span className="wx-stat-label">HUMID</span><span className="wx-stat-val">{current.humidity}%</span></div>
-        <div className="wx-stat"><span className="wx-stat-label">GUSTS</span><span className="wx-stat-val">{current.gusts}</span></div>
-      </div>
-
-      <div className="wx-section-label">Show-time hourly</div>
-      <div className="wx-hourly">
-        {hourly.map((h, i) => (
-          <div key={i} className="wx-hour">
-            <div className="wx-hour-t">{h.t}</div>
-            <div className="wx-hour-icon"><WxIcon kind={h.icon} size={18} /></div>
-            <div className="wx-hour-temp">{h.temp}°</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="wx-section-label">Upcoming Outdoor</div>
-      <div className="wx-upcoming">
-        {upcoming.map((u, i) => (
-          <div key={i} className={"wx-up wx-risk-" + u.risk}>
-            <div className="wx-up-date">{u.date}</div>
-            <div className="wx-up-icon"><WxIcon kind={u.icon} size={18} /></div>
-            <div className="wx-up-temp">{u.temp}°</div>
-            <div className="wx-up-place">
-              <div className="wx-up-venue">{u.venue}</div>
-              <div className="wx-up-city">{u.city}</div>
-            </div>
-            <div className="wx-up-note">{u.note}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 // ─── NEWS & INDUSTRY FEED ────────────────────────────────────────────────────
 function NewsWidget() {

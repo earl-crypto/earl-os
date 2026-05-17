@@ -236,6 +236,14 @@ function App({ session }) {
           Show Tasks panel auto-appears the day before, day of, and day after each show date.
         </div>
         <ShowDatesManager dates={showDates} addDate={addShowDate} removeDate={removeShowDate} />
+        <TweakSection label="Weather" />
+        <div className="tweak-note">Get a free API key at tomorrow.io</div>
+        <TweakText
+          label="Tomorrow.io key"
+          value={t.weatherKey || ""}
+          placeholder="paste API key…"
+          onChange={(v) => setTweak("weatherKey", v)}
+        />
         <TweakSection label="Layout" />
         <TweakButton onClick={() => {
           if (!confirm("Reset all window positions and sizes?")) return;
