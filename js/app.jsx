@@ -89,6 +89,11 @@ function App({ session }) {
             ))}
           </div>
           <a href="tech-design.html" className="menubar-techdoc" title="Tech Design Document">Tech Doc</a>
+          <button
+            className="menubar-signout"
+            title="Tweaks"
+            onClick={() => window.postMessage({ type: '__activate_edit_mode' }, '*')}
+          >⚙</button>
           <button className="menubar-signout" title="Sign out" onClick={() => _sb.auth.signOut()}>
             {session?.user?.user_metadata?.avatar_url
               ? <img src={session.user.user_metadata.avatar_url} className="menubar-avatar" alt="" />
