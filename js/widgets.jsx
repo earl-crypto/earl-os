@@ -44,6 +44,48 @@ async function _fetchGmailMessages(token) {
 
 // ─── Weather helpers ──────────────────────────────────────────────────────────
 
+// ─── News helpers ─────────────────────────────────────────────────────────────
+
+const NEWS_FEEDS = [
+  { name: 'BILLBOARD', url: 'https://www.billboard.com/feed/',                    cat: 'industry' },
+  { name: 'MBW',       url: 'https://www.musicbusinessworldwide.com/feed/',       cat: 'industry' },
+  { name: 'VARIETY',   url: 'https://variety.com/feed/',                          cat: 'industry' },
+  { name: 'IQ MAG',    url: 'https://www.iqmag.net/feed/',                        cat: 'touring'  },
+  { name: 'FOH',       url: 'https://www.fohonline.com/feed/',                    cat: 'tech'     },
+  { name: 'SOS',       url: 'https://www.soundonsound.com/feed',                  cat: 'tech'     },
+];
+
+function _relTime(dateStr) {
+  const diff = (Date.now() - new Date(dateStr)) / 1000;
+  if (diff < 3600)   return `${Math.floor(diff / 60)}m`;
+  if (diff < 86400)  return `${Math.floor(diff / 3600)}h`;
+  if (diff < 604800) return `${Math.floor(diff / 86400)}d`;
+  return `${Math.floor(diff / 604800)}w`;
+}
+
+async function _fetchNewsFeeds() {
+  const results = await Promise.allSettled(
+    NEWS_FEEDS.map(async feed => {
+      const r = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feed.url)}&count=6`);
+      const data = await r.json();
+      if (data.status !== 'ok') return [];
+      return data.items.map(item => ({
+        src:   feed.name,
+        cat:   feed.cat,
+        time:  _relTime(item.pubDate),
+        title: item.title.replace(/&amp;/g, '&').replace(/&#8217;/g, "'").replace(/&#8216;/g, "'").trim(),
+        link:  item.link,
+        hot:   Date.now() - new Date(item.pubDate) < 2 * 3600000,
+        _date: new Date(item.pubDate),
+      }));
+    })
+  );
+  return results
+    .filter(r => r.status === 'fulfilled')
+    .flatMap(r => r.value)
+    .sort((a, b) => b._date - a._date);
+}
+
 async function _fetchWeather(apiKey, lat, lon) {
   const loc = `${lat},${lon}`;
   const base = `https://api.tomorrow.io/v4/weather`;
@@ -927,27 +969,32 @@ function WxIcon({ kind, size = 22 }) {
 // ─── NEWS & INDUSTRY FEED ────────────────────────────────────────────────────
 function NewsWidget() {
   const [filter, setFilter] = React.useState("all");
-  const stories = [
-    { src: "POLLSTAR",      cat: "touring",  time: "2h", title: "Q1 2026 mid-year report: arena tour grosses up 14% YoY", hot: true },
-    { src: "BILLBOARD",     cat: "industry", time: "4h", title: "Live Nation finalizes acquisition of secondary-market venue chain" },
-    { src: "IQ MAGAZINE",   cat: "venues",   time: "5h", title: "New 8,000-cap amphitheater breaks ground in Charlotte" },
-    { src: "FOH MAGAZINE",  cat: "tech",     time: "8h", title: "Clair Global announces refreshed V-Tour line array, ships Q3" },
-    { src: "MIX",           cat: "tech",     time: "1d", title: "Carbon-neutral touring: AEG commits to 60% reduction by 2028" },
-    { src: "POLLSTAR",      cat: "touring",  time: "1d", title: "Q2 routing trends — secondary markets continue to outperform" },
-    { src: "VARIETY",       cat: "industry", time: "2d", title: "IATSE Local 1 ratifies new national touring agreement" },
-    { src: "TPI MAG",       cat: "tech",     time: "2d", title: "FAA finalizes drone show permits ahead of summer festival season" },
-    { src: "BILLBOARD",     cat: "industry", time: "3d", title: "Dynamic pricing backlash forces three artists to switch platforms" },
-    { src: "IQ MAGAZINE",   cat: "venues",   time: "3d", title: "Madison Square Garden trials new staffing model for production" },
-  ];
+  const [stories, setStories] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [lastRefresh, setLastRefresh] = React.useState(null);
+
+  const load = React.useCallback(() => {
+    setLoading(true);
+    _fetchNewsFeeds().then(items => {
+      setStories(items);
+      setLoading(false);
+      setLastRefresh(new Date());
+    }).catch(() => setLoading(false));
+  }, []);
+
+  React.useEffect(load, [load]);
+
   const cats = [
     { id: "all",      label: "All",      color: "var(--text-dim)" },
     { id: "touring",  label: "Touring",  color: "var(--red)" },
     { id: "industry", label: "Industry", color: "var(--blue)" },
     { id: "tech",     label: "Tech",     color: "var(--amber)" },
-    { id: "venues",   label: "Venues",   color: "#7da3d9" },
   ];
   const filtered = filter === "all" ? stories : stories.filter(s => s.cat === filter);
-  const catColor = (c) => (cats.find(x => x.id === c) || {}).color || "var(--text-dim)";
+  const catColor = c => (cats.find(x => x.id === c) || {}).color || "var(--text-dim)";
+  const refreshLabel = lastRefresh
+    ? lastRefresh.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+    : '…';
 
   return (
     <div className="news">
@@ -962,8 +1009,13 @@ function NewsWidget() {
         ))}
       </div>
       <div className="news-list">
+        {loading && stories.length === 0 && (
+          <div style={{ padding: "12px", color: "var(--text-faint)", fontSize: "11px" }}>Loading feeds…</div>
+        )}
         {filtered.map((s, i) => (
-          <div key={i} className={"news-item" + (s.hot ? " news-hot" : "")}>
+          <a key={i} href={s.link} target="_blank" rel="noopener noreferrer"
+             className={"news-item" + (s.hot ? " news-hot" : "")}
+             style={{ textDecoration: "none", color: "inherit", display: "block" }}>
             <div className="news-meta">
               <span className="news-src" style={{ color: catColor(s.cat) }}>{s.src}</span>
               <span className="news-dot" style={{ background: catColor(s.cat) }} />
@@ -971,12 +1023,12 @@ function NewsWidget() {
               {s.hot && <span className="news-hot-tag">HOT</span>}
             </div>
             <div className="news-title">{s.title}</div>
-          </div>
+          </a>
         ))}
       </div>
       <div className="news-foot">
-        <span>Last refresh: just now</span>
-        <span className="news-refresh">↻ refresh</span>
+        <span>Refreshed {refreshLabel}</span>
+        <button onClick={load} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-faint)", fontSize: "inherit", padding: 0 }} className="news-refresh">↻ refresh</button>
       </div>
     </div>
   );
