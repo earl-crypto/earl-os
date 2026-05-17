@@ -1029,6 +1029,7 @@ function NewsWidget() {
     { id: "all",      label: "All",      color: "var(--text-dim)" },
     { id: "touring",  label: "Touring",  color: "var(--red)" },
     { id: "industry", label: "Industry", color: "var(--blue)" },
+    { id: "venues",   label: "Venues",   color: "#7da3d9" },
     { id: "tech",     label: "Tech",     color: "var(--amber)" },
   ];
   const filtered = filter === "all" ? stories : stories.filter(s => s.cat === filter);
