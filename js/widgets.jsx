@@ -605,10 +605,9 @@ function ShowJournal() {
   const dayKey = new Date().toISOString().slice(0, 10);
   const { journalShow, updateShowJournal, providerToken } = useData();
   const blank = {
-    venue: "The Fillmore — San Francisco, CA",
-    crew_call: "07:30", t_load_in: "09:00", soundcheck: "15:00", doors: "20:00",
-    show_time: "20:30", emcee_time: "", curfew: "23:00",
-    attendance_cap: "1150", attendance_actual: "",
+    venue: "", crew_call: "", t_load_in: "", soundcheck: "", doors: "",
+    show_time: "", emcee_time: "", curfew: "",
+    attendance_cap: "", attendance_actual: "",
     arrival: "", parking: "", load_in: "", meals: "", show: "", load_out: "", depart: "", general: "",
   };
   const entry = { ...blank, ...(journalShow[dayKey] || {}) };

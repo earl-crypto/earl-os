@@ -14,8 +14,8 @@ const DEFAULT_PROFILE = {
   name: "Earl Neal",
   title: "Founder · Tour Production Manager",
   status: "available",
-  event: "Maverick City — Spring '26 Tour",
-  venue: "The Fillmore · San Francisco, CA",
+  event: "",
+  venue: "",
 };
 
 const TWEAK_DEFAULTS = {
