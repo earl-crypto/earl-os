@@ -606,9 +606,10 @@ function ShowJournal() {
   const { journalShow, updateShowJournal } = useData();
   const blank = {
     venue: "The Fillmore — San Francisco, CA",
-    crewCall: "07:30", tLoadIn: "09:00", soundcheck: "15:00", doors: "20:00", showTime: "20:30", curfew: "23:00",
-    attendanceCap: "1150", attendanceActual: "",
-    arrival: "", parking: "", loadIn: "", meals: "", show: "", loadOut: "", depart: "", general: "",
+    crew_call: "07:30", t_load_in: "09:00", soundcheck: "15:00", doors: "20:00",
+    show_time: "20:30", emcee_time: "", curfew: "23:00",
+    attendance_cap: "1150", attendance_actual: "",
+    arrival: "", parking: "", load_in: "", meals: "", show: "", load_out: "", depart: "", general: "",
   };
   const entry = { ...blank, ...(journalShow[dayKey] || {}) };
   const update = (k, v) => updateShowJournal(dayKey, k, v);
@@ -622,15 +623,15 @@ function ShowJournal() {
       <p><strong>${entry.venue}</strong></p>
       <h2>Schedule</h2>
       <table>
-        ${row('Crew Call', entry.crewCall)}${row('Load-in', entry.tLoadIn)}${row('Soundcheck', entry.soundcheck)}
-        ${row('Doors', entry.doors)}${row('Show', entry.showTime)}${row('Curfew', entry.curfew)}
-        ${row('Capacity', entry.attendanceCap)}${row('Actual', entry.attendanceActual)}
-        ${entry.attendanceActual && entry.attendanceCap ? row('Fill', Math.round((+entry.attendanceActual / +entry.attendanceCap) * 100) + '%') : ''}
+        ${row('Crew Call', entry.crew_call)}${row('Load-in', entry.t_load_in)}${row('Soundcheck', entry.soundcheck)}
+        ${row('Doors', entry.doors)}${row('Show', entry.show_time)}${row('Emcee', entry.emcee_time)}${row('Curfew', entry.curfew)}
+        ${row('Capacity', entry.attendance_cap)}${row('Actual', entry.attendance_actual)}
+        ${entry.attendance_actual && entry.attendance_cap ? row('Fill', Math.round((+entry.attendance_actual / +entry.attendance_cap) * 100) + '%') : ''}
       </table>
       <h2>Notes</h2>
       <table>
-        ${row('Arrival', entry.arrival)}${row('Parking', entry.parking)}${row('Load-in', entry.loadIn)}
-        ${row('Meals', entry.meals)}${row('Show', entry.show)}${row('Load-out', entry.loadOut)}
+        ${row('Arrival', entry.arrival)}${row('Parking', entry.parking)}${row('Load-in', entry.load_in)}
+        ${row('Meals', entry.meals)}${row('Show', entry.show)}${row('Load-out', entry.load_out)}
         ${row('Depart', entry.depart)}${row('General', entry.general)}
       </table>
       <div class="foot">Earl OS · Show Journal · ${dateStr}</div>`);
@@ -646,10 +647,10 @@ function ShowJournal() {
   const sections = [
     { k: "arrival",  label: "Arrival",   ph: "time · who's already there · access" },
     { k: "parking",  label: "Parking",   ph: "location · passes · truck/bus spots" },
-    { k: "loadIn",   label: "Load In",   ph: "dock · time · stewards · issues" },
+    { k: "load_in",  label: "Load In",   ph: "dock · time · stewards · issues" },
     { k: "meals",    label: "Meals",     ph: "vendor · times · headcount · dietary" },
     { k: "show",     label: "Show",      ph: "doors · set times · highlights · notes" },
-    { k: "loadOut",  label: "Load Out",  ph: "time · crew · issues" },
+    { k: "load_out", label: "Load Out",  ph: "time · crew · issues" },
     { k: "depart",   label: "Depart",    ph: "time · destination · next call" },
     { k: "general",  label: "General Notes", ph: "anything else worth remembering…" },
   ];
@@ -664,28 +665,29 @@ function ShowJournal() {
       </div>
 
       <div className="show-times">
-        <Time k="crewCall" label="Crew Call" />
-        <Time k="tLoadIn" label="Load-in" />
+        <Time k="crew_call" label="Crew Call" />
+        <Time k="t_load_in" label="Load-in" />
         <Time k="soundcheck" label="Soundcheck" />
         <Time k="doors" label="Doors" />
-        <Time k="showTime" label="Show" />
+        <Time k="show_time" label="Show" />
+        <Time k="emcee_time" label="Emcee" />
         <Time k="curfew" label="Curfew" />
       </div>
 
       <div className="show-attend">
         <div className="show-attend-cell">
           <label>Cap</label>
-          <input className="bare-input" value={entry.attendanceCap} onChange={(e) => update("attendanceCap", e.target.value)} />
+          <input className="bare-input" value={entry.attendance_cap} onChange={(e) => update("attendance_cap", e.target.value)} />
         </div>
         <div className="show-attend-cell">
           <label>Actual</label>
-          <input className="bare-input" value={entry.attendanceActual} onChange={(e) => update("attendanceActual", e.target.value)} placeholder="—" />
+          <input className="bare-input" value={entry.attendance_actual} onChange={(e) => update("attendance_actual", e.target.value)} placeholder="—" />
         </div>
         <div className="show-attend-cell show-attend-fill">
           <label>Fill</label>
           <div className="show-fill-val">
-            {entry.attendanceActual && entry.attendanceCap
-              ? Math.round((+entry.attendanceActual / +entry.attendanceCap) * 100) + "%"
+            {entry.attendance_actual && entry.attendance_cap
+              ? Math.round((+entry.attendance_actual / +entry.attendance_cap) * 100) + "%"
               : "—"}
           </div>
         </div>

@@ -76,6 +76,7 @@ create table if not exists public.journal_show (
   soundcheck        text not null default '',
   doors             text not null default '',
   show_time         text not null default '',
+  emcee_time        text not null default '',
   curfew            text not null default '',
   attendance_cap    text not null default '',
   attendance_actual text not null default '',
