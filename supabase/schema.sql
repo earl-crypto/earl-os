@@ -171,3 +171,13 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- ─── Realtime (run once to enable live push to connected clients) ─────────────
+alter publication supabase_realtime add table public.task_templates;
+alter publication supabase_realtime add table public.task_state;
+alter publication supabase_realtime add table public.tasks_oneoff;
+alter publication supabase_realtime add table public.journal_personal;
+alter publication supabase_realtime add table public.journal_show;
+alter publication supabase_realtime add table public.notes;
+alter publication supabase_realtime add table public.settings;
+alter publication supabase_realtime add table public.show_dates;

@@ -72,6 +72,107 @@ function DataProvider({ session, children }) {
     })();
   }, [uid]);
 
+  // ── Realtime subscriptions (push changes from any device instantly) ──────────
+  React.useEffect(() => {
+    if (!ready) return;
+
+    const ch = _sb.channel(`earl-os:${uid}`)
+
+      // task check-offs
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'task_state', filter: `user_id=eq.${uid}` },
+        ({ new: row }) => {
+          if (!row?.template_id) return;
+          _setTaskData(prev => {
+            for (const kind of TASK_KINDS) {
+              if (!prev[kind]?.templates?.some(t => t.id === row.template_id)) continue;
+              const sm = prev[kind].stateMap;
+              return { ...prev, [kind]: { ...prev[kind], stateMap: { ...sm, [row.template_id]: { ...(sm[row.template_id] || {}), [row.scope_date]: row.done } } } };
+            }
+            return prev;
+          });
+        })
+
+      // template task added
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'task_templates', filter: `user_id=eq.${uid}` },
+        ({ new: row }) => {
+          if (!row?.id) return;
+          _setTaskData(prev => {
+            const data = prev[row.kind] || { templates: [], stateMap: {} };
+            if (data.templates.some(t => t.id === row.id)) return prev;
+            const templates = [...data.templates, { id: row.id, text: row.text, ord: row.ord }].sort((a, b) => a.ord - b.ord);
+            return { ...prev, [row.kind]: { ...data, templates } };
+          });
+        })
+
+      // template task removed
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'task_templates', filter: `user_id=eq.${uid}` },
+        ({ old: row }) => {
+          if (!row?.id) return;
+          _setTaskData(prev => {
+            for (const kind of TASK_KINDS) {
+              if (!prev[kind]?.templates?.some(t => t.id === row.id)) continue;
+              return { ...prev, [kind]: { ...prev[kind], templates: prev[kind].templates.filter(t => t.id !== row.id) } };
+            }
+            return prev;
+          });
+        })
+
+      // one-off tasks
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tasks_oneoff', filter: `user_id=eq.${uid}` },
+        ({ new: row }) => {
+          if (!row?.id) return;
+          _setOneoffTasks(prev => prev.some(t => t.id === row.id) ? prev : [...prev, { id: row.id, text: row.text, done: row.done }]);
+        })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks_oneoff', filter: `user_id=eq.${uid}` },
+        ({ new: row }) => {
+          if (!row?.id) return;
+          _setOneoffTasks(prev => prev.map(t => t.id === row.id ? { ...t, done: row.done } : t));
+        })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'tasks_oneoff', filter: `user_id=eq.${uid}` },
+        ({ old: row }) => {
+          if (!row?.id) return;
+          _setOneoffTasks(prev => prev.filter(t => t.id !== row.id));
+        })
+
+      // notes
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` },
+        ({ new: row }) => { if (row?.text != null) _setNotes(row.text); })
+
+      // journals
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'journal_personal', filter: `user_id=eq.${uid}` },
+        ({ new: row }) => {
+          if (!row?.date) return;
+          const { user_id, updated_at, ...entry } = row;
+          _setJournalPersonal(prev => ({ ...prev, [row.date]: entry }));
+        })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'journal_show', filter: `user_id=eq.${uid}` },
+        ({ new: row }) => {
+          if (!row?.show_date) return;
+          const { user_id, updated_at, ...rest } = row;
+          _setJournalShow(prev => ({ ...prev, [row.show_date]: rest }));
+        })
+
+      // settings (tweaks, show mode, closed windows)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings', filter: `user_id=eq.${uid}` },
+        ({ new: s }) => {
+          if (!s) return;
+          if (s.tweaks && Object.keys(s.tweaks).length) _setTweaks({ ...TWEAK_DEFAULTS, ...s.tweaks });
+          if (s.show_day != null) _setShowDay(s.show_day);
+          if (s.closed_windows) _setClosed(s.closed_windows);
+        })
+
+      // show dates (re-fetch on any change to avoid needing REPLICA IDENTITY FULL)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'show_dates', filter: `user_id=eq.${uid}` },
+        () => {
+          _sb.from("show_dates").select("date").eq("user_id", uid).order("date")
+            .then(({ data }) => { if (data) _setShowDates(data.map(r => r.date)); });
+        })
+
+      .subscribe();
+
+    return () => { _sb.removeChannel(ch); };
+  }, [ready, uid]);
+
   // ─── Sync functions (load cloud → migrate localStorage if first time) ───────
 
   async function syncProfileSettings() {
