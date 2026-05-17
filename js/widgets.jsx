@@ -78,8 +78,7 @@ function _parseXMLFeed(xml, feed) {
 
 const _NEWS_CACHE_KEY = 'earl-os:news-cache';
 
-async function _fetchNewsFeeds(apiKey) {
-  // 30-minute sessionStorage cache to stay within free tier limits
+async function _fetchNewsFeeds() {
   try {
     const cached = sessionStorage.getItem(_NEWS_CACHE_KEY);
     if (cached) {
@@ -88,38 +87,11 @@ async function _fetchNewsFeeds(apiKey) {
     }
   } catch(e) {}
 
-  const QUERIES = [
-    { q: 'music+industry+touring+concert+live', label: 'TOURING',  cat: 'touring'  },
-    { q: 'music+industry+business+streaming',   label: 'INDUSTRY', cat: 'industry' },
-    { q: 'live+sound+audio+production+festival',label: 'TECH',     cat: 'tech'     },
-  ];
+  const { data, error } = await _sb.functions.invoke('news-feeds');
+  if (error) throw new Error(error.message || 'Edge Function unreachable — deploy it in Supabase Dashboard');
+  if (!data?.items) throw new Error('No items returned from news feed');
 
-  const results = await Promise.allSettled(
-    QUERIES.map(async ({ q, cat, label }) => {
-      const r = await fetch(`https://gnews.io/api/v4/search?q=${q}&lang=en&max=6&apikey=${apiKey}`);
-      if (r.status === 403) throw new Error('Invalid GNews API key');
-      if (!r.ok) throw new Error(`GNews HTTP ${r.status}`);
-      const data = await r.json();
-      return (data.articles || []).map(a => ({
-        src:   (a.source?.name || label).toUpperCase().slice(0, 14),
-        cat,
-        title: a.title,
-        link:  a.url,
-        time:  _relTime(a.publishedAt),
-        hot:   new Date(a.publishedAt) > new Date(Date.now() - 2 * 3600000),
-        _date: a.publishedAt,
-      }));
-    })
-  );
-
-  const errors = results.filter(r => r.status === 'rejected').map(r => r.reason?.message);
-  if (errors.length === QUERIES.length) throw new Error(errors[0] || 'All feeds failed');
-
-  const items = results
-    .filter(r => r.status === 'fulfilled')
-    .flatMap(r => r.value)
-    .sort((a, b) => new Date(b._date) - new Date(a._date));
-
+  const items = data.items;
   try { sessionStorage.setItem(_NEWS_CACHE_KEY, JSON.stringify({ ts: Date.now(), items })); } catch(e) {}
   return items;
 }
@@ -1006,9 +978,6 @@ function WxIcon({ kind, size = 22 }) {
 
 // ─── NEWS & INDUSTRY FEED ────────────────────────────────────────────────────
 function NewsWidget() {
-  const { tweaks } = useData();
-  const apiKey = (tweaks.newsKey || '').trim();
-
   const [filter, setFilter] = React.useState("all");
   const [stories, setStories] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
@@ -1016,12 +985,11 @@ function NewsWidget() {
   const [lastRefresh, setLastRefresh] = React.useState(null);
 
   const load = React.useCallback(() => {
-    if (!apiKey) { setLoading(false); return; }
     setLoading(true); setErr(null);
-    _fetchNewsFeeds(apiKey)
+    _fetchNewsFeeds()
       .then(items => { setStories(items); setLoading(false); setLastRefresh(new Date()); })
       .catch(e => { setErr(e?.message || 'Unknown error'); setLoading(false); });
-  }, [apiKey]);
+  }, []);
 
   React.useEffect(load, [load]);
 
@@ -1050,8 +1018,7 @@ function NewsWidget() {
         ))}
       </div>
       <div className="news-list">
-        {!apiKey && <div style={{ padding: "12px", color: "var(--text-faint)", fontSize: "11px", lineHeight: 1.6 }}>Open Tweaks → News → paste your GNews API key to enable live news.</div>}
-        {apiKey && loading && stories.length === 0 && <div style={{ padding: "12px", color: "var(--text-faint)", fontSize: "11px" }}>Loading feeds…</div>}
+        {loading && stories.length === 0 && <div style={{ padding: "12px", color: "var(--text-faint)", fontSize: "11px" }}>Loading feeds…</div>}
         {err && <div style={{ padding: "12px", color: "var(--amber)", fontSize: "11px", lineHeight: 1.5 }}>{err}</div>}
         {filtered.map((s, i) => (
           <a key={i} href={s.link} target="_blank" rel="noopener noreferrer"
