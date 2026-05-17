@@ -1,0 +1,1357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Earl OS — Tech Design Document</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:           #08111f;
+    --bg-2:         #0c1a30;
+    --panel:        #0f1d34;
+    --panel-2:      #142a48;
+    --panel-3:      #1a3155;
+    --border:       #1f3b66;
+    --border-soft:  rgba(120, 160, 210, 0.10);
+    --border-strong:#2c4d80;
+    --text:         #e8edf5;
+    --text-2:       #b9c7dc;
+    --text-dim:     #7d90af;
+    --text-faint:   #4f6485;
+    --red:          #a8323b;
+    --red-bright:   #c43e49;
+    --blue:         #4267a3;
+    --blue-bright:  #5b85c7;
+    --green:        #4caf6a;
+    --amber:        #d4a437;
+    --ff-display: "Barlow Condensed", Impact, sans-serif;
+    --ff-sans:    "Inter", system-ui, -apple-system, sans-serif;
+    --ff-mono:    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 80px;
+  }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--ff-sans);
+    color: var(--text-2);
+    font-size: 15px;
+    line-height: 1.6;
+    background:
+      radial-gradient(ellipse at 20% 0%, rgba(66,103,163,0.10), transparent 50%),
+      radial-gradient(ellipse at 100% 100%, rgba(168,50,59,0.06), transparent 55%),
+      linear-gradient(180deg, #0a1426 0%, #050b16 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+
+  /* ── Reading progress bar ──────────────────────────────────── */
+  #progress-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 2px;
+    width: 0%;
+    background: linear-gradient(90deg, var(--red), var(--blue-bright));
+    z-index: 200;
+    transition: width 80ms linear;
+  }
+
+  /* ── Top bar ───────────────────────────────────────────────── */
+  .topbar {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(10, 20, 38, 0.90);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    backdrop-filter: blur(20px) saturate(140%);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 28px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .topbar-back {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 4px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.03);
+    color: var(--text-dim);
+    text-decoration: none;
+    font-family: var(--ff-display);
+    font-size: 12px; font-weight: 500; letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition: all 120ms;
+    flex-shrink: 0;
+  }
+  .topbar-back:hover {
+    color: var(--text);
+    border-color: var(--border-strong);
+    background: rgba(255,255,255,0.06);
+  }
+  .topbar-back-arrow { font-size: 14px; }
+  .topbar-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+  .topbar img { width: 32px; height: 32px; border-radius: 5px; object-fit: cover; flex-shrink: 0; }
+  .topbar-brand {
+    font-family: var(--ff-display);
+    font-size: 18px; font-weight: 700; letter-spacing: 0.18em;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .topbar-sep { color: var(--text-faint); }
+  .topbar-doc {
+    font-family: var(--ff-display);
+    font-size: 13px; font-weight: 500; letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+  .topbar-meta {
+    margin-left: auto;
+    font-family: var(--ff-mono);
+    font-size: 11px; color: var(--text-faint);
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+
+  /* ── Layout ────────────────────────────────────────────────── */
+  .layout {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    max-width: 1400px;
+    margin: 0 auto;
+    gap: 40px;
+    padding: 32px 28px 96px;
+  }
+  .toc {
+    position: sticky; top: 76px;
+    align-self: start;
+    max-height: calc(100vh - 100px);
+    overflow: auto;
+    padding-right: 4px;
+  }
+  .toc-title {
+    font-family: var(--ff-display);
+    font-size: 11px; font-weight: 600; letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin-bottom: 10px;
+  }
+  .toc-list { list-style: none; margin: 0; padding: 0; }
+  .toc-list a {
+    display: block;
+    padding: 5px 10px;
+    margin-bottom: 1px;
+    border-left: 2px solid transparent;
+    font-size: 13px;
+    color: var(--text-dim);
+    text-decoration: none;
+    transition: all 120ms;
+  }
+  .toc-list a:hover {
+    color: var(--text);
+    border-left-color: var(--blue);
+    background: rgba(66,103,163,.05);
+  }
+  .toc-list a.toc-active {
+    color: var(--text);
+    border-left-color: var(--red-bright);
+    background: rgba(168,50,59,.06);
+  }
+  .toc-list .toc-sub a {
+    padding-left: 24px;
+    font-size: 12px;
+    color: var(--text-faint);
+  }
+  .toc-num {
+    font-family: var(--ff-mono);
+    font-size: 10px;
+    margin-right: 8px;
+    color: var(--text-faint);
+  }
+  .toc-list a.toc-active .toc-num {
+    color: var(--red-bright);
+  }
+
+  .content { min-width: 0; }
+
+  /* ── Hero ──────────────────────────────────────────────────── */
+  .hero {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background:
+      linear-gradient(135deg, rgba(168,50,59,0.08), transparent 50%),
+      linear-gradient(220deg, rgba(66,103,163,0.10), transparent 60%),
+      var(--panel);
+    padding: 40px 36px;
+    margin-bottom: 40px;
+  }
+  .hero-eyebrow {
+    font-family: var(--ff-display);
+    font-size: 11px; font-weight: 600; letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--red-bright);
+    margin-bottom: 8px;
+  }
+  .hero h1 {
+    font-family: var(--ff-display);
+    font-size: 44px; font-weight: 700; letter-spacing: -0.01em;
+    line-height: 1.05;
+    color: var(--text);
+    margin: 0 0 14px;
+  }
+  .hero p {
+    font-size: 17px;
+    color: var(--text-2);
+    margin: 0;
+    max-width: 60ch;
+    line-height: 1.55;
+  }
+  .hero-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-top: 28px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border-soft);
+  }
+  .stat-label {
+    font-family: var(--ff-display);
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-faint);
+  }
+  .stat-val {
+    font-family: var(--ff-display);
+    font-size: 22px; font-weight: 600;
+    color: var(--text);
+    margin-top: 4px;
+  }
+
+  /* ── Sections ──────────────────────────────────────────────── */
+  section { margin-bottom: 56px; scroll-margin-top: 80px; }
+  section h2 {
+    font-family: var(--ff-display);
+    font-size: 30px; font-weight: 700; letter-spacing: -0.01em;
+    color: var(--text);
+    margin: 0 0 8px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: baseline; gap: 12px;
+  }
+  section h2 .num {
+    font-family: var(--ff-mono);
+    font-size: 14px; font-weight: 500;
+    color: var(--red-bright);
+    letter-spacing: 0.1em;
+  }
+  section h3 {
+    font-family: var(--ff-display);
+    font-size: 20px; font-weight: 600;
+    color: var(--text);
+    margin: 32px 0 8px;
+    letter-spacing: 0.01em;
+  }
+  section h4 {
+    font-family: var(--ff-display);
+    font-size: 14px; font-weight: 600;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--text-dim);
+    margin: 20px 0 8px;
+  }
+  section .section-sub {
+    color: var(--text-dim);
+    font-size: 14px;
+    margin: 0 0 24px;
+    max-width: 64ch;
+  }
+  section p { max-width: 70ch; }
+
+  /* ── Callouts ───────────────────────────────────────────────── */
+  .callout {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: 12px;
+    background: rgba(66,103,163,0.06);
+    border-left: 3px solid var(--blue);
+    border-radius: 0 4px 4px 0;
+    padding: 14px 16px;
+    margin: 16px 0;
+  }
+  .callout-icon {
+    font-family: var(--ff-display);
+    font-size: 11px; font-weight: 700;
+    background: var(--blue);
+    color: white;
+    border-radius: 50%;
+    width: 24px; height: 24px;
+    display: inline-flex; align-items: center; justify-content: center;
+    letter-spacing: 0.04em;
+  }
+  .callout-body { font-size: 14px; line-height: 1.55; }
+  .callout-body strong { color: var(--text); }
+  .callout-plain { background: rgba(212,164,55,0.06); border-left-color: var(--amber); }
+  .callout-plain .callout-icon { background: var(--amber); color: #29261b; }
+  .callout-warn { background: rgba(168,50,59,0.08); border-left-color: var(--red); }
+  .callout-warn .callout-icon { background: var(--red); color: white; }
+
+  /* ── Tables ────────────────────────────────────────────────── */
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    background: rgba(0,0,0,0.15);
+    font-size: 14px;
+  }
+  .table th {
+    text-align: left;
+    background: var(--panel-2);
+    padding: 10px 14px;
+    font-family: var(--ff-display);
+    font-size: 12px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--text);
+    border-bottom: 1px solid var(--border);
+  }
+  .table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-soft);
+    vertical-align: top;
+    color: var(--text-2);
+  }
+  .table tr:last-child td { border-bottom: 0; }
+  .table tr:hover td { background: rgba(91,133,199,0.04); }
+  .table code, code {
+    font-family: var(--ff-mono);
+    font-size: 0.88em;
+    background: rgba(91,133,199,0.12);
+    color: var(--text);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+
+  /* ── Pills ─────────────────────────────────────────────────── */
+  .pill {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 3px;
+    font-family: var(--ff-mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-right: 4px;
+  }
+  .pill-have   { background: rgba(76,175,106,0.18); color: var(--green); }
+  .pill-need   { background: rgba(168,50,59,0.18); color: var(--red-bright); }
+  .pill-easy   { background: rgba(76,175,106,0.18); color: var(--green); }
+  .pill-mid    { background: rgba(212,164,55,0.18); color: var(--amber); }
+  .pill-hard   { background: rgba(168,50,59,0.18); color: var(--red-bright); }
+  .pill-blue   { background: rgba(66,103,163,0.2); color: var(--blue-bright); }
+
+  /* ── Architecture diagram ─────────────────────────────────── */
+  .arch {
+    display: flex; flex-direction: column; gap: 14px;
+    background: rgba(0,0,0,0.18);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    margin: 16px 0;
+  }
+  .arch-tier {
+    display: grid; grid-template-columns: 100px 1fr; gap: 16px;
+    align-items: stretch;
+  }
+  .arch-tier-label {
+    font-family: var(--ff-display);
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text-dim);
+    padding-top: 16px;
+  }
+  .arch-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 8px;
+  }
+  .arch-box {
+    background: var(--panel);
+    border: 1px solid var(--border-strong);
+    border-radius: 5px;
+    padding: 12px 12px;
+    text-align: center;
+  }
+  .arch-box-title {
+    font-family: var(--ff-display);
+    font-size: 12px; font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--text);
+  }
+  .arch-box-sub {
+    font-family: var(--ff-mono);
+    font-size: 10px;
+    color: var(--text-faint);
+    margin-top: 2px;
+  }
+  .arch-tier-frontend .arch-box { border-color: var(--blue); }
+  .arch-tier-frontend .arch-box-title { color: var(--blue-bright); }
+  .arch-tier-backend  .arch-box { border-color: var(--red); }
+  .arch-tier-backend  .arch-box-title { color: var(--red-bright); }
+  .arch-tier-external .arch-box { border-color: var(--amber); border-style: dashed; }
+  .arch-tier-external .arch-box-title { color: var(--amber); }
+  .arch-arrows {
+    display: grid; grid-template-columns: 100px 1fr; gap: 16px;
+    margin: -8px 0;
+  }
+  .arch-arrows-line {
+    text-align: center;
+    color: var(--text-faint);
+    font-family: var(--ff-mono);
+    font-size: 14px;
+    letter-spacing: 1em;
+  }
+
+  /* ── Code block ────────────────────────────────────────────── */
+  pre.code {
+    background: rgba(0,0,0,0.35);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 14px 16px;
+    font-family: var(--ff-mono);
+    font-size: 12.5px;
+    color: var(--text-2);
+    overflow-x: auto;
+    line-height: 1.5;
+    margin: 14px 0;
+  }
+  pre.code .k { color: var(--blue-bright); }
+  pre.code .s { color: var(--green); }
+  pre.code .c { color: var(--text-faint); font-style: italic; }
+  pre.code .n { color: var(--amber); }
+
+  /* ── Build phases ──────────────────────────────────────────── */
+  .phases {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 14px;
+    margin: 18px 0;
+  }
+  .phase-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--phase-color, var(--blue));
+    border-radius: 5px;
+    padding: 18px 22px;
+    display: grid;
+    grid-template-columns: 56px 1fr 100px;
+    gap: 18px;
+    align-items: start;
+  }
+  .phase-num {
+    font-family: var(--ff-display);
+    font-size: 36px; font-weight: 700;
+    color: var(--phase-color, var(--blue));
+    line-height: 1;
+  }
+  .phase-body h4 {
+    margin: 0 0 6px;
+    color: var(--text);
+    font-family: var(--ff-display);
+    font-size: 18px;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .phase-body p { margin: 0 0 6px; font-size: 14px; }
+  .phase-body ul { margin: 4px 0; padding-left: 18px; font-size: 13px; }
+  .phase-body ul li { margin: 2px 0; }
+  .phase-time {
+    text-align: right;
+    font-family: var(--ff-mono);
+    font-size: 11px;
+    color: var(--text-faint);
+  }
+  .phase-time strong {
+    display: block;
+    font-family: var(--ff-display);
+    font-size: 22px;
+    color: var(--text);
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+
+  /* ── Cost cards ───────────────────────────────────────────── */
+  .costs {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px; margin: 16px 0;
+  }
+  .cost-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 16px;
+  }
+  .cost-name {
+    font-family: var(--ff-display);
+    font-size: 13px; font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--text);
+  }
+  .cost-tier {
+    font-family: var(--ff-mono); font-size: 10px;
+    color: var(--text-faint);
+    margin-bottom: 8px;
+  }
+  .cost-price {
+    font-family: var(--ff-display);
+    font-size: 24px; font-weight: 700;
+    color: var(--text);
+  }
+  .cost-price .unit { font-size: 12px; color: var(--text-faint); margin-left: 4px; }
+  .cost-note { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+
+  /* ── Glossary ──────────────────────────────────────────────── */
+  .glossary {
+    display: grid; grid-template-columns: 200px 1fr;
+    gap: 10px 24px;
+    margin: 16px 0;
+  }
+  .gloss-term {
+    font-family: var(--ff-mono);
+    font-size: 13px;
+    color: var(--amber);
+    font-weight: 500;
+  }
+  .gloss-def { font-size: 14px; color: var(--text-2); }
+
+  /* ── Misc ──────────────────────────────────────────────────── */
+  ul { line-height: 1.65; }
+  ul li { margin: 4px 0; }
+  strong { color: var(--text); }
+  em { color: var(--text); font-style: normal; font-weight: 500; }
+  a { color: var(--blue-bright); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  hr { border: 0; border-top: 1px solid var(--border-soft); margin: 32px 0; }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(91,133,199,.15); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(91,133,199,.3); }
+
+  @media (max-width: 960px) {
+    .layout { grid-template-columns: 1fr; }
+    .toc { position: static; max-height: none; }
+    .hero h1 { font-size: 32px; }
+    .hero-stats { grid-template-columns: repeat(2, 1fr); }
+    .phase-card { grid-template-columns: 1fr; }
+    .glossary { grid-template-columns: 1fr; }
+    .topbar { flex-wrap: wrap; gap: 10px; }
+    .topbar-meta { margin-left: 0; }
+  }
+</style>
+</head>
+<body>
+
+<div id="progress-bar"></div>
+
+<div class="topbar">
+  <a href="index.html" class="topbar-back">
+    <span class="topbar-back-arrow">←</span> Dashboard
+  </a>
+  <div class="topbar-divider"></div>
+  <img src="assets/earl-neal-logo.jpeg" alt="EN" />
+  <span class="topbar-brand">EARL OS</span>
+  <span class="topbar-sep">·</span>
+  <span class="topbar-doc">Technical Design Document</span>
+  <span class="topbar-meta">v1.0 · May 2026</span>
+</div>
+
+<div class="layout">
+
+  <!-- ─── TOC ─────────────────────────────────────────────── -->
+  <aside class="toc">
+    <div class="toc-title">Contents</div>
+    <ul class="toc-list">
+      <li><a href="#overview"><span class="toc-num">00</span> Overview</a></li>
+      <li><a href="#today"><span class="toc-num">01</span> What works today</a></li>
+      <li><a href="#bigpicture"><span class="toc-num">02</span> The big picture</a></li>
+      <li><a href="#stack"><span class="toc-num">03</span> Tech stack</a></li>
+      <li><a href="#datamodel"><span class="toc-num">04</span> Data model</a></li>
+      <li><a href="#widgets"><span class="toc-num">05</span> Widget-by-widget</a></li>
+      <li><a href="#auth"><span class="toc-num">06</span> Auth & security</a></li>
+      <li><a href="#sync"><span class="toc-num">07</span> Sync across devices</a></li>
+      <li><a href="#mobile"><span class="toc-num">08</span> Mobile strategy</a></li>
+      <li><a href="#build"><span class="toc-num">09</span> Build plan</a></li>
+      <li><a href="#costs"><span class="toc-num">10</span> Costs</a></li>
+      <li><a href="#risks"><span class="toc-num">11</span> Risks & open questions</a></li>
+      <li><a href="#glossary"><span class="toc-num">12</span> Glossary</a></li>
+      <li><a href="#next"><span class="toc-num">13</span> Next steps</a></li>
+    </ul>
+  </aside>
+
+  <!-- ─── CONTENT ─────────────────────────────────────────── -->
+  <main class="content">
+
+    <!-- ── HERO ────────────────────────────────────────────── -->
+    <div class="hero">
+      <div class="hero-eyebrow">Tech Design · Earl OS v1.0</div>
+      <h1>From prototype to a real product, one step at a time.</h1>
+      <p>This doc explains — in plain English — what needs to be built behind Earl OS so it actually runs your day, syncs to your phone, talks to Gmail, and survives a browser refresh. No prior software background assumed.</p>
+      <div class="hero-stats">
+        <div><div class="stat-label">Phases</div><div class="stat-val">4</div></div>
+        <div><div class="stat-label">MVP Time</div><div class="stat-val">2 weeks</div></div>
+        <div><div class="stat-label">Full v1</div><div class="stat-val">6 weeks</div></div>
+        <div><div class="stat-label">Monthly Cost</div><div class="stat-val">~$0</div></div>
+      </div>
+    </div>
+
+    <!-- ── 00 OVERVIEW ─────────────────────────────────────── -->
+    <section id="overview">
+      <h2><span class="num">00</span> Overview</h2>
+      <p class="section-sub">What we're building, and what we're <em>not</em> building.</p>
+
+      <p>Earl OS is your daily command center for running Earl Neal Event Management Services. It pulls together everything you check in a typical work day or show day — calendar, email, weather, news, tasks, journals — into one window-manager dashboard you can rearrange to taste. It works in any modern web browser and (eventually) on your phone.</p>
+
+      <h3>In scope for v1</h3>
+      <ul>
+        <li>Authenticated single-user app (just you for now, but built so you can invite crew later)</li>
+        <li>Real Gmail and Google Calendar integration</li>
+        <li>Real weather data for outdoor stops</li>
+        <li>News/industry feed aggregated from RSS</li>
+        <li>Show schedule, daily-resetting task templates, journals, notes</li>
+        <li>Sync across all your devices in real time</li>
+        <li>Works offline (with sync when you reconnect)</li>
+      </ul>
+
+      <h3>Out of scope (for now)</h3>
+      <ul>
+        <li>Multi-user collaboration (sharing show journals with crew, etc.) — easy to add in v2</li>
+        <li>Native iPhone/Android apps — we'll use a PWA first (more on that below)</li>
+        <li>AI features (auto-summarize emails, suggest tasks) — possible later, not foundational</li>
+      </ul>
+    </section>
+
+    <!-- ── 01 WHAT WORKS TODAY ─────────────────────────────── -->
+    <section id="today">
+      <h2><span class="num">01</span> What works today vs what's left to build</h2>
+      <p class="section-sub">The prototype you've been using has the full interface and persistence — but only on one device, and with fake data for some windows. Here's the gap to close.</p>
+
+      <table class="table">
+        <thead>
+          <tr><th>Window</th><th>Status today</th><th>To make it real, we need</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Personal</strong></td>
+            <td><span class="pill pill-have">Working</span> Saves on this browser only</td>
+            <td>Move data to cloud database so it follows you across devices</td>
+          </tr>
+          <tr>
+            <td><strong>Calendar</strong></td>
+            <td><span class="pill pill-need">Mock data</span> Hardcoded events</td>
+            <td>Read from your Google Calendar via API</td>
+          </tr>
+          <tr>
+            <td><strong>Gmail</strong></td>
+            <td><span class="pill pill-need">Mock data</span> Fake inbox</td>
+            <td>Read from your Gmail via Google's API</td>
+          </tr>
+          <tr>
+            <td><strong>Weather</strong></td>
+            <td><span class="pill pill-need">Mock data</span> Fixed values</td>
+            <td>Live forecast API, geocoded from your venue addresses</td>
+          </tr>
+          <tr>
+            <td><strong>News & Industry</strong></td>
+            <td><span class="pill pill-need">Mock data</span> Fixed headlines</td>
+            <td>Background job pulling RSS feeds every 30 minutes</td>
+          </tr>
+          <tr>
+            <td><strong>Tasks</strong> (3 kinds)</td>
+            <td><span class="pill pill-have">Working</span> Including the daily-reset templates</td>
+            <td>Same — move from browser to cloud database</td>
+          </tr>
+          <tr>
+            <td><strong>Quick Notes</strong></td>
+            <td><span class="pill pill-have">Working</span></td>
+            <td>Move to cloud DB</td>
+          </tr>
+          <tr>
+            <td><strong>Personal Journal</strong></td>
+            <td><span class="pill pill-have">Working</span></td>
+            <td>Move to cloud DB; add export-to-PDF later</td>
+          </tr>
+          <tr>
+            <td><strong>Show Journal</strong></td>
+            <td><span class="pill pill-have">Working</span></td>
+            <td>Move to cloud DB; add export &amp; archive to Google Drive</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout callout-plain">
+        <span class="callout-icon">i</span>
+        <div class="callout-body">
+          <strong>Plain English:</strong> About half the app already works — the parts <em>you</em> control (tasks, journals, notes, personal info). The half that needs real data from external services (Gmail, Calendar, Weather, News) is where the new engineering work goes.
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 02 BIG PICTURE ────────────────────────────────────── -->
+    <section id="bigpicture">
+      <h2><span class="num">02</span> The big picture</h2>
+      <p class="section-sub">Three layers. The browser you see, the cloud database that remembers everything, and the third-party services we pull data from.</p>
+
+      <div class="arch">
+        <div class="arch-tier arch-tier-frontend">
+          <div class="arch-tier-label">Frontend<br/>(what you see)</div>
+          <div class="arch-row">
+            <div class="arch-box">
+              <div class="arch-box-title">Browser App</div>
+              <div class="arch-box-sub">Laptop, desktop</div>
+            </div>
+            <div class="arch-box">
+              <div class="arch-box-title">PWA</div>
+              <div class="arch-box-sub">Phone, iPad</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="arch-arrows">
+          <div></div>
+          <div class="arch-arrows-line">↕ ↕</div>
+        </div>
+
+        <div class="arch-tier arch-tier-backend">
+          <div class="arch-tier-label">Backend<br/>(your data)</div>
+          <div class="arch-row">
+            <div class="arch-box">
+              <div class="arch-box-title">Auth</div>
+              <div class="arch-box-sub">Sign in with Google</div>
+            </div>
+            <div class="arch-box">
+              <div class="arch-box-title">Database</div>
+              <div class="arch-box-sub">Tasks, journals, notes</div>
+            </div>
+            <div class="arch-box">
+              <div class="arch-box-title">Realtime sync</div>
+              <div class="arch-box-sub">Multi-device</div>
+            </div>
+            <div class="arch-box">
+              <div class="arch-box-title">Edge Functions</div>
+              <div class="arch-box-sub">RSS polling, etc.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="arch-arrows">
+          <div></div>
+          <div class="arch-arrows-line">↕</div>
+        </div>
+
+        <div class="arch-tier arch-tier-external">
+          <div class="arch-tier-label">External<br/>services</div>
+          <div class="arch-row">
+            <div class="arch-box"><div class="arch-box-title">Gmail API</div><div class="arch-box-sub">Inbox</div></div>
+            <div class="arch-box"><div class="arch-box-title">Calendar API</div><div class="arch-box-sub">Events</div></div>
+            <div class="arch-box"><div class="arch-box-title">Tomorrow.io</div><div class="arch-box-sub">Weather</div></div>
+            <div class="arch-box"><div class="arch-box-title">RSS Feeds</div><div class="arch-box-sub">News</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout">
+        <span class="callout-icon">?</span>
+        <div class="callout-body">
+          <strong>Why three layers?</strong> The browser only knows how to draw the screen. Your data lives in the cloud so it follows you device-to-device. The external services are the source of truth for things we don't generate ourselves (email, calendar, weather, news). Splitting them out means we can swap any one of them later without rewriting the others.
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 03 STACK ──────────────────────────────────────────── -->
+    <section id="stack">
+      <h2><span class="num">03</span> Tech stack</h2>
+      <p class="section-sub">What software we pick for each layer, and why.</p>
+
+      <table class="table">
+        <thead>
+          <tr><th>Layer</th><th>Tool</th><th>Why this one</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Frontend</strong></td>
+            <td><code>React</code> + <code>Vite</code></td>
+            <td>The prototype already uses React. Vite is a modern build tool — fast, simple. Industry standard. Tons of developers know it.</td>
+          </tr>
+          <tr>
+            <td><strong>Styling</strong></td>
+            <td><code>CSS</code> (already done)</td>
+            <td>The dark Earl OS look is already written. We just bring it along.</td>
+          </tr>
+          <tr>
+            <td><strong>Hosting (frontend)</strong></td>
+            <td><code>Vercel</code></td>
+            <td>One-click deploy from Git. Free for personal use. Built by the React team's friends — works seamlessly.</td>
+          </tr>
+          <tr>
+            <td><strong>Backend / Database / Auth / Realtime</strong></td>
+            <td><code>Supabase</code></td>
+            <td>One service does four jobs. PostgreSQL database, login system, realtime sync, file storage. Open source, generous free tier, scales when you need it to.</td>
+          </tr>
+          <tr>
+            <td><strong>Background jobs</strong></td>
+            <td><code>Supabase Edge Functions</code> + <code>cron</code></td>
+            <td>Tiny serverless scripts that run on a schedule. Used for RSS polling and weather caching. Already part of Supabase, no extra service.</td>
+          </tr>
+          <tr>
+            <td><strong>Gmail / Calendar</strong></td>
+            <td>Google APIs (OAuth)</td>
+            <td>The only real option. Google's own SDKs. Free for personal use.</td>
+          </tr>
+          <tr>
+            <td><strong>Weather</strong></td>
+            <td><code>Tomorrow.io</code></td>
+            <td>Best severe-weather alerts of any consumer API (heat, wind, lightning) — critical for outdoor events. Free tier covers our usage.</td>
+          </tr>
+          <tr>
+            <td><strong>News</strong></td>
+            <td>Direct RSS (Pollstar, Billboard, IQ, etc.)</td>
+            <td>Cheaper and faster than NewsAPI. Each publication exposes a free RSS feed. We poll them every 30 min.</td>
+          </tr>
+          <tr>
+            <td><strong>Domain &amp; DNS</strong></td>
+            <td><code>GoDaddy</code> (already owned)</td>
+            <td>You already own <code>earlneal.com</code>. Your portfolio/services site at <code>www.earlneal.com</code> stays untouched; we point <code>os.earlneal.com</code> at Vercel via a single DNS record on GoDaddy. Zero migration of your current site.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout callout-plain">
+        <span class="callout-icon">i</span>
+        <div class="callout-body">
+          <strong>About GoDaddy:</strong> Your existing hosting is great for the portfolio site but isn't built for a real-time app like Earl OS — it doesn't support PostgreSQL, OAuth-backed APIs, or live sync. The industry-standard pattern is to keep the marketing site on its current host and run the app on a service designed for apps. That's what Vercel + Supabase do. Your <code>earlneal.com</code> visitors never know the difference — both sit under the same brand.
+        </div>
+      </div>
+
+      <div class="callout">
+        <span class="callout-icon">?</span>
+        <div class="callout-body">
+          <strong>Why Supabase instead of Firebase or AWS?</strong> Supabase uses PostgreSQL — a real database that any developer on earth can read. If you ever want to switch services or hand the project off, you can. Firebase locks you into Google's proprietary format. AWS is overkill for one person.
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 04 DATA MODEL ─────────────────────────────────────── -->
+    <section id="datamodel">
+      <h2><span class="num">04</span> Data model</h2>
+      <p class="section-sub">What gets stored, and how it's organized. Each row in the table below is a "table" in the database — think of it like a spreadsheet tab.</p>
+
+      <table class="table">
+        <thead>
+          <tr><th>Table</th><th>What it holds</th><th>Example row</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>users</code></td>
+            <td>Your account info</td>
+            <td>id · email · name · title · status · current_event · current_venue</td>
+          </tr>
+          <tr>
+            <td><code>show_dates</code></td>
+            <td>Every date you have a show, with details</td>
+            <td>user_id · date · venue · city · is_outdoor · cap · load_in_time</td>
+          </tr>
+          <tr>
+            <td><code>task_templates</code></td>
+            <td>The repeating checklists (Office daily, Show pre/day/post)</td>
+            <td>id · user_id · kind · text · order</td>
+          </tr>
+          <tr>
+            <td><code>task_state</code></td>
+            <td>Which template tasks are checked, for which date</td>
+            <td>user_id · template_id · scope_date · done</td>
+          </tr>
+          <tr>
+            <td><code>tasks_oneoff</code></td>
+            <td>The one-off task list (not a template)</td>
+            <td>id · user_id · text · done · created_at</td>
+          </tr>
+          <tr>
+            <td><code>journal_personal</code></td>
+            <td>One entry per calendar day</td>
+            <td>user_id · date · mood · energy · grateful · win · reflection</td>
+          </tr>
+          <tr>
+            <td><code>journal_show</code></td>
+            <td>One entry per show date</td>
+            <td>user_id · show_date · venue · times · attendance · arrival · parking · load_in · meals · show · load_out · depart · general</td>
+          </tr>
+          <tr>
+            <td><code>notes</code></td>
+            <td>The Quick Notes scratchpad (single blob)</td>
+            <td>user_id · text · updated_at</td>
+          </tr>
+          <tr>
+            <td><code>news_cache</code></td>
+            <td>Stories scraped from RSS, de-duplicated</td>
+            <td>id · source · category · title · url · published_at · hot</td>
+          </tr>
+          <tr>
+            <td><code>weather_cache</code></td>
+            <td>Recent weather lookups, so we don't hit the API every render</td>
+            <td>location · forecast_json · fetched_at</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout callout-plain">
+        <span class="callout-icon">i</span>
+        <div class="callout-body">
+          <strong>Why two tables for tasks?</strong> Because you asked for templates that carry over. The <code>task_templates</code> table holds the master list — change the text once, every future show picks it up. The <code>task_state</code> table holds "which boxes are checked on which date" — that's how today's check-offs don't carry to tomorrow.
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 05 WIDGET BY WIDGET ───────────────────────────────── -->
+    <section id="widgets">
+      <h2><span class="num">05</span> Widget-by-widget breakdown</h2>
+      <p class="section-sub">What each window in the dashboard actually does behind the scenes.</p>
+
+      <h3>Personal</h3>
+      <p>Loads your <code>users</code> row. Edits write back to the same row.</p>
+      <p><strong>Complexity:</strong> <span class="pill pill-easy">Trivial</span></p>
+
+      <h3>Calendar</h3>
+      <p>On load, requests today + tomorrow's events from your Google Calendar via the Calendar API. We cache the response for 5 minutes so we don't spam Google. A small badge in your calendar settings (or a "type: show" tag) lets us auto-detect which dates are show dates.</p>
+      <p><strong>Complexity:</strong> <span class="pill pill-mid">Moderate</span> — Google OAuth is the trickiest part of v1.</p>
+
+      <h3>Gmail</h3>
+      <p>Same OAuth as Calendar (one login, two services). We request the last ~20 unread messages, store the latest preview in our DB so the inbox loads instantly when you open Earl OS, then refresh in the background.</p>
+      <p><strong>Complexity:</strong> <span class="pill pill-mid">Moderate</span></p>
+
+      <h3>Weather</h3>
+      <p>For each show in your <code>show_dates</code> table marked <code>is_outdoor=true</code>, an Edge Function pulls a forecast from Tomorrow.io once an hour and stores it in <code>weather_cache</code>. The widget reads from cache. Risk classification (low/med/high) is computed from temperature, precip probability, and wind speed.</p>
+      <p><strong>Complexity:</strong> <span class="pill pill-mid">Moderate</span></p>
+
+      <h3>News &amp; Industry</h3>
+      <p>A scheduled Edge Function runs every 30 minutes. It fetches each publication's RSS feed, de-duplicates against the news_cache table by URL, and inserts new stories. The widget queries the latest ~30 stories. Category is inferred from the source (or simple keyword rules).</p>
+      <p><strong>Complexity:</strong> <span class="pill pill-easy">Easy</span> — RSS is a 30-year-old protocol; well-supported.</p>
+
+      <h3>Tasks (Show, Office, One-offs)</h3>
+      <p>Already covered in the data model section. Templates carry over; daily state resets.</p>
+      <p><strong>Complexity:</strong> <span class="pill pill-easy">Easy</span> (already prototyped)</p>
+
+      <h3>Quick Notes</h3>
+      <p>Plain text in a single row. Saves debounced 1 second after you stop typing.</p>
+      <p><strong>Complexity:</strong> <span class="pill pill-easy">Trivial</span></p>
+
+      <h3>Personal Journal &amp; Show Journal</h3>
+      <p>Save on every keystroke (debounced). Each date is its own row. The Show Journal is keyed by show date, not calendar date — so the "Show #042" entry stays the same even if you reflect on it the next morning.</p>
+      <p><strong>Complexity:</strong> <span class="pill pill-easy">Easy</span></p>
+
+      <h3>Future: Export Show Journals as PDF</h3>
+      <p>Edge Function generates a clean PDF from the show journal entry on demand or after every show, optionally auto-uploads to a designated Google Drive folder.</p>
+      <p><strong>Complexity:</strong> <span class="pill pill-mid">Moderate</span></p>
+    </section>
+
+    <!-- ── 06 AUTH ────────────────────────────────────────────── -->
+    <section id="auth">
+      <h2><span class="num">06</span> Auth &amp; security</h2>
+      <p class="section-sub">How you log in, and how we keep your stuff safe.</p>
+
+      <h3>Login</h3>
+      <p>One button: "<strong>Sign in with Google</strong>". Same Google account you use for Gmail/Calendar. No password to remember. This single OAuth approval covers all three: identity, Gmail, Calendar.</p>
+
+      <h3>Where credentials live</h3>
+      <ul>
+        <li>You never see or store Google's password — Google handles it.</li>
+        <li>Supabase stores a short-lived <em>refresh token</em> (encrypted at rest) that lets us re-request access to Gmail/Calendar on your behalf, without you logging in again.</li>
+        <li>If you revoke access in your Google account settings, our access dies instantly.</li>
+      </ul>
+
+      <h3>Row-Level Security</h3>
+      <p>Every table in Supabase has a rule that says <em>"a row is visible only if its <code>user_id</code> matches the currently-signed-in user."</em> Even if someone got a backup of the database, they couldn't read another user's data without that user's credentials.</p>
+
+      <h3>What if your laptop is stolen?</h3>
+      <ul>
+        <li>Earl OS auto-locks after a configurable idle period (default: 30 min). Logging back in requires Google.</li>
+        <li>You can revoke a device from a "Sessions" page (we'll build this in v1).</li>
+      </ul>
+
+      <div class="callout callout-warn">
+        <span class="callout-icon">!</span>
+        <div class="callout-body">
+          <strong>Critical:</strong> Reading Gmail requires Google's "Restricted Scope" review — a one-time security review (~1-2 weeks turnaround) before the OAuth screen says "Earl OS" instead of "unverified app." We can build and test in development first; submit for review once the app is stable.
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 07 SYNC ────────────────────────────────────────────── -->
+    <section id="sync">
+      <h2><span class="num">07</span> Sync across devices</h2>
+      <p class="section-sub">Check a task on your laptop, see the check appear instantly on your iPad.</p>
+
+      <p>Supabase has a built-in feature called <code>Realtime</code> — when a row in the database changes, every connected device gets notified within ~100 ms. The dashboard re-renders automatically. No "pull to refresh" needed.</p>
+
+      <h3>What this means in practice</h3>
+      <ul>
+        <li>Type a note on your laptop at the office → walk into the venue → open your iPad → note is there.</li>
+        <li>Check off "Soundcheck complete" on your phone → your laptop on the bus updates instantly.</li>
+        <li>If you're offline, changes queue locally and sync when you reconnect.</li>
+      </ul>
+
+      <div class="callout">
+        <span class="callout-icon">?</span>
+        <div class="callout-body">
+          <strong>What about conflicts?</strong> If two devices edit the same field at the same instant, the last write wins. For tasks (boolean check-offs) this is essentially never a problem. For text fields (journal entries), we'll use a small "last edited 12s ago on iPhone" indicator and warn if it looks like a clash.
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 08 MOBILE ─────────────────────────────────────────── -->
+    <section id="mobile">
+      <h2><span class="num">08</span> Mobile strategy</h2>
+      <p class="section-sub">How Earl OS lives on your phone — without building a separate iPhone/Android app.</p>
+
+      <h3>Phase 1: PWA</h3>
+      <p>A <em>Progressive Web App</em> is a regular website that an iPhone or Android treats like an app. You visit Earl OS in Safari, tap "Add to Home Screen," and now there's an Earl OS icon on your phone. Opens in fullscreen, works offline, looks and feels like a native app.</p>
+      <ul>
+        <li><strong>Pros:</strong> Free (no App Store fees), no review process, deploy updates instantly.</li>
+        <li><strong>Cons:</strong> No native push notifications on iPhone until iOS 16.4+ (we have that now, May 2026). Slightly less polish on gestures than a real native app.</li>
+      </ul>
+
+      <h3>Phase 2 (if needed): React Native</h3>
+      <p>If we ever need <em>push notifications</em>, <em>better gestures</em>, or to be in the App Store: React Native lets us reuse 80% of our existing React code in a native-quality iPhone/Android app. We'd revisit this in 6 months once we know what's missing.</p>
+
+      <div class="callout callout-plain">
+        <span class="callout-icon">i</span>
+        <div class="callout-body">
+          <strong>Plain English:</strong> Start with the website-on-your-home-screen approach. It's free, fast to ship, and 90% as good. Only build a "real app" if we discover something the PWA truly can't do.
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 09 BUILD PLAN ─────────────────────────────────────── -->
+    <section id="build">
+      <h2><span class="num">09</span> Build plan</h2>
+      <p class="section-sub">Four phases, each shipping something usable. We don't go to phase N+1 until phase N is solid.</p>
+
+      <div class="phases">
+
+        <div class="phase-card" style="--phase-color: var(--green);">
+          <div class="phase-num">1</div>
+          <div class="phase-body">
+            <h4>Move existing data to the cloud</h4>
+            <p>Stand up the database. Add login. Migrate everything that already works in the prototype — tasks, journals, notes, profile, show dates — from browser-only to cloud-backed. End of this phase: you can use Earl OS on any browser on any device, signed in with Google. No new features yet, but your data follows you.</p>
+            <ul>
+              <li>Spin up Supabase project, define tables, enable Row-Level Security</li>
+              <li>Add "Sign in with Google" to the existing prototype</li>
+              <li>Replace every <code>localStorage</code> call with database calls</li>
+              <li>Turn on Realtime sync</li>
+              <li>Add <code>os.earlneal.com</code> DNS record on GoDaddy, pointing to Vercel</li>
+              <li>Deploy to <code>os.earlneal.com</code></li>
+            </ul>
+          </div>
+          <div class="phase-time"><strong>1–2 wk</strong>Foundation</div>
+        </div>
+
+        <div class="phase-card" style="--phase-color: var(--blue);">
+          <div class="phase-num">2</div>
+          <div class="phase-body">
+            <h4>Google integrations (Gmail + Calendar)</h4>
+            <p>The two biggest "make-it-feel-real" wins. Gmail starts showing your actual inbox; Calendar shows your actual events. Both pull from the same Google login from phase 1.</p>
+            <ul>
+              <li>Add Gmail + Calendar OAuth scopes to the Google login</li>
+              <li>Build a sync service that pulls the last N emails/events into the cache</li>
+              <li>Wire the Gmail and Calendar windows to read from cache</li>
+              <li>Auto-detect show dates from Calendar events tagged a certain way</li>
+              <li>Submit for Google's restricted-scope review (parallel; takes 1-2 wk on their side)</li>
+            </ul>
+          </div>
+          <div class="phase-time"><strong>1.5 wk</strong>Integrations</div>
+        </div>
+
+        <div class="phase-card" style="--phase-color: var(--amber);">
+          <div class="phase-num">3</div>
+          <div class="phase-body">
+            <h4>Weather, News, and mobile polish</h4>
+            <p>Replace the last two mock-data windows. PWA installable on iPhone/iPad/Android.</p>
+            <ul>
+              <li>Tomorrow.io integration with venue geocoding</li>
+              <li>Risk computation for outdoor events</li>
+              <li>RSS poller for ~8 industry publications, with de-duplication</li>
+              <li>Category inference (Touring / Industry / Tech / Venues)</li>
+              <li>Service worker for offline support</li>
+              <li>"Add to Home Screen" tested on iPhone + iPad + Android</li>
+            </ul>
+          </div>
+          <div class="phase-time"><strong>1.5 wk</strong>External data</div>
+        </div>
+
+        <div class="phase-card" style="--phase-color: var(--red);">
+          <div class="phase-num">4</div>
+          <div class="phase-body">
+            <h4>Polish, exports, &amp; nice-to-haves</h4>
+            <p>The "this feels finished" pass.</p>
+            <ul>
+              <li>Show Journal PDF export, auto-archive to Drive</li>
+              <li>Push notifications for show-time approaching, weather alerts</li>
+              <li>Backup &amp; restore (download your data anytime)</li>
+              <li>Onboarding flow for first-time setup of show dates</li>
+              <li>Optional: invite-a-crew-member (read-only access to your schedule)</li>
+            </ul>
+          </div>
+          <div class="phase-time"><strong>1 wk</strong>Polish</div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ── 10 COSTS ──────────────────────────────────────────── -->
+    <section id="costs">
+      <h2><span class="num">10</span> Costs</h2>
+      <p class="section-sub">Running this for one person, monthly. All prices in USD.</p>
+
+      <div class="costs">
+        <div class="cost-card">
+          <div class="cost-name">Domain (earlneal.com)</div>
+          <div class="cost-tier">GoDaddy — already owned</div>
+          <div class="cost-price">$0<span class="unit">/mo</span></div>
+          <div class="cost-note">No change — you already pay annually.</div>
+        </div>
+        <div class="cost-card">
+          <div class="cost-name">Vercel</div>
+          <div class="cost-tier">Hobby tier</div>
+          <div class="cost-price">$0<span class="unit">/mo</span></div>
+          <div class="cost-note">Free indefinitely for personal use.</div>
+        </div>
+        <div class="cost-card">
+          <div class="cost-name">Supabase</div>
+          <div class="cost-tier">Free → Pro at scale</div>
+          <div class="cost-price">$0–$25<span class="unit">/mo</span></div>
+          <div class="cost-note">Free for one user; Pro ($25) when you need more DB or want backups.</div>
+        </div>
+        <div class="cost-card">
+          <div class="cost-name">Tomorrow.io Weather</div>
+          <div class="cost-tier">Free tier</div>
+          <div class="cost-price">$0<span class="unit">/mo</span></div>
+          <div class="cost-note">500 calls/day free. We need ~50/day.</div>
+        </div>
+        <div class="cost-card">
+          <div class="cost-name">Google APIs</div>
+          <div class="cost-tier">Gmail, Calendar, Drive</div>
+          <div class="cost-price">$0<span class="unit">/mo</span></div>
+          <div class="cost-note">Free under quota for normal personal usage.</div>
+        </div>
+        <div class="cost-card">
+          <div class="cost-name">RSS feeds</div>
+          <div class="cost-tier">Direct, no service</div>
+          <div class="cost-price">$0<span class="unit">/mo</span></div>
+          <div class="cost-note">Public feeds. No fees.</div>
+        </div>
+      </div>
+
+      <p style="margin-top: 18px;"><strong>Realistic total: $0/month for year one.</strong> Your GoDaddy domain is already covered. Once we cross into paid Supabase ($25/mo), still cheap for what it does — fully managed database, auth, realtime sync, and storage.</p>
+    </section>
+
+    <!-- ── 11 RISKS ──────────────────────────────────────────── -->
+    <section id="risks">
+      <h2><span class="num">11</span> Risks &amp; open questions</h2>
+      <p class="section-sub">What could go wrong, and what we'd do about it.</p>
+
+      <table class="table">
+        <thead>
+          <tr><th>Risk</th><th>Likelihood</th><th>Mitigation</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Google's OAuth review takes longer than expected</strong></td>
+            <td><span class="pill pill-mid">Medium</span></td>
+            <td>Start the review the day we begin Phase 2. Worst case: app marked "unverified" — you can still use it personally, just sees a warning screen on login.</td>
+          </tr>
+          <tr>
+            <td><strong>An RSS feed changes format and breaks parsing</strong></td>
+            <td><span class="pill pill-mid">Medium (over months)</span></td>
+            <td>Logging + monitoring. Quick fix: 30 min of code per affected source.</td>
+          </tr>
+          <tr>
+            <td><strong>You forget your Google password</strong></td>
+            <td><span class="pill pill-easy">Low</span></td>
+            <td>Google handles password recovery — not our problem.</td>
+          </tr>
+          <tr>
+            <td><strong>Supabase has an outage</strong></td>
+            <td><span class="pill pill-easy">Low</span></td>
+            <td>Earl OS falls back to last-cached data; you can still see things, just can't save until they're back. We'll add a clear "offline / reconnecting" indicator.</td>
+          </tr>
+          <tr>
+            <td><strong>You want a feature we didn't plan for</strong></td>
+            <td><span class="pill pill-hard">High</span></td>
+            <td>That's good. We have a clean architecture; new windows are easy to add.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Open questions for you</h3>
+      <ul>
+        <li>Is there a specific Google Calendar you want to designate as "shows"? Or do you want to mark events with a particular tag?</li>
+        <li>Do you want crew members to ever have access (even read-only)?</li>
+        <li>Do you want PDF exports to auto-archive to Drive or just download manually?</li>
+        <li>Any other data sources we should pull in? (Pollstar Pro account, settlement tools, hotel booking confirmations, etc.)</li>
+      </ul>
+    </section>
+
+    <!-- ── 12 GLOSSARY ───────────────────────────────────────── -->
+    <section id="glossary">
+      <h2><span class="num">12</span> Glossary</h2>
+      <p class="section-sub">Terms a developer will throw around. Cheat-sheet so you can call BS when you need to.</p>
+
+      <div class="glossary">
+        <div class="gloss-term">API</div>
+        <div class="gloss-def">"Application Programming Interface" — a structured way for one piece of software to talk to another. When the dashboard fetches your Gmail, it's "calling the Gmail API."</div>
+
+        <div class="gloss-term">OAuth</div>
+        <div class="gloss-def">The standard "Sign in with Google / Facebook / Apple" handshake. You give Earl OS permission to act on your behalf without ever giving us your password.</div>
+
+        <div class="gloss-term">Backend</div>
+        <div class="gloss-def">Everything that runs on a server, not in your browser. Database, login system, scheduled jobs.</div>
+
+        <div class="gloss-term">Frontend</div>
+        <div class="gloss-def">What you actually see and click on. Runs in your browser.</div>
+
+        <div class="gloss-term">Database</div>
+        <div class="gloss-def">Where data is stored long-term. Think of it as a very strict spreadsheet that many people can read and write at once.</div>
+
+        <div class="gloss-term">Table / Row / Column</div>
+        <div class="gloss-def">Database structure. A table is like a spreadsheet tab. Each row is one record (one task, one show, one email). Columns are the fields (text, done, date, etc.).</div>
+
+        <div class="gloss-term">PWA</div>
+        <div class="gloss-def">Progressive Web App. A website you can install to your phone's home screen and use offline like a real app.</div>
+
+        <div class="gloss-term">Serverless / Edge Function</div>
+        <div class="gloss-def">A small piece of code that runs only when triggered (e.g. every 30 min on a schedule, or when someone clicks a button). No always-on server to babysit.</div>
+
+        <div class="gloss-term">RSS</div>
+        <div class="gloss-def">A standard, machine-readable format that most news sites publish. Lets us pull headlines without scraping.</div>
+
+        <div class="gloss-term">Realtime</div>
+        <div class="gloss-def">When a database change pushes itself to all connected devices in milliseconds, instead of devices having to poll for updates.</div>
+
+        <div class="gloss-term">Cache</div>
+        <div class="gloss-def">Saved-for-later copy of something. Speeds things up so we don't re-fetch the same data over and over.</div>
+
+        <div class="gloss-term">Row-Level Security (RLS)</div>
+        <div class="gloss-def">A database rule that says "this user can only see rows that belong to them." Keeps your data isolated from anyone else's.</div>
+
+        <div class="gloss-term">Webhook</div>
+        <div class="gloss-def">"Call us when X happens." Used so we don't have to poll constantly — e.g. Gmail can tell us "new email arrived" instead of us asking every 30 seconds.</div>
+
+        <div class="gloss-term">Geocoding</div>
+        <div class="gloss-def">Turning a place name ("Red Rocks Amphitheater") into latitude/longitude so we can ask for its weather.</div>
+
+        <div class="gloss-term">Service Worker</div>
+        <div class="gloss-def">A small piece of code that runs in the background of your browser. Powers offline support in PWAs.</div>
+      </div>
+    </section>
+
+    <!-- ── 13 NEXT STEPS ─────────────────────────────────────── -->
+    <section id="next">
+      <h2><span class="num">13</span> Next steps</h2>
+      <p class="section-sub">If you give the green light, here's what happens in the first 48 hours.</p>
+
+      <ol style="line-height: 1.8;">
+        <li><strong>Subdomain locked in: <code>os.earlneal.com</code></strong>. Echoes the product name and stays short for mobile typing.</li>
+        <li><strong>Create accounts:</strong> Supabase, Vercel, Google Cloud Console (developer side), Tomorrow.io. All free. We'll do this together via a screen share.</li>
+        <li><strong>Spin up the Supabase project</strong> and create the empty tables described in Section 4.</li>
+        <li><strong>Connect the existing prototype to Supabase</strong> — your tasks, journals, and notes start saving to the cloud instead of just your browser.</li>
+        <li><strong>Add one DNS record on GoDaddy:</strong> a <code>CNAME</code> for <code>os</code> pointing to Vercel. ~2 minutes inside GoDaddy's DNS panel; doesn't touch your existing website.</li>
+        <li><strong>Deploy to <code>os.earlneal.com</code></strong> — you can now hit it from any device, and your portfolio site at <code>www.earlneal.com</code> is completely unaffected.</li>
+      </ol>
+
+      <p>After that we're into Phase 2 (Gmail + Calendar), which is the most exciting visible upgrade.</p>
+
+      <hr />
+
+      <p style="color: var(--text-dim); font-size: 13px;">
+        Questions or changes to this plan? Tell me which sections need more detail and I'll expand them. Want a different stack (e.g. Firebase instead of Supabase)? Easy to swap — let me know your constraints.
+      </p>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  // Reading progress bar
+  const bar = document.getElementById('progress-bar');
+  function updateProgress() {
+    const scrollTop = window.scrollY;
+    const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+    bar.style.width = (docHeight > 0 ? (scrollTop / docHeight) * 100 : 0) + '%';
+  }
+  window.addEventListener('scroll', updateProgress, { passive: true });
+
+  // TOC scroll spy using IntersectionObserver
+  const sections = document.querySelectorAll('section[id]');
+  const tocLinks = document.querySelectorAll('.toc-list a');
+
+  // Track which section is most visible
+  const visibleSections = new Map();
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      visibleSections.set(entry.target.id, entry.intersectionRatio);
+    });
+
+    // Find the section with the highest intersection ratio that's also near the top
+    let activeId = null;
+    let bestRatio = 0;
+
+    // Prioritize whichever section is currently crossing the upper quarter of the viewport
+    sections.forEach(section => {
+      const rect = section.getBoundingClientRect();
+      const ratio = visibleSections.get(section.id) || 0;
+      // Section is "active" if its top is in the upper 40% of the viewport
+      if (rect.top <= window.innerHeight * 0.4 && rect.bottom > 0) {
+        if (ratio >= bestRatio || activeId === null) {
+          bestRatio = ratio;
+          activeId = section.id;
+        }
+      }
+    });
+
+    // Fall back to the last section that's scrolled past
+    if (!activeId) {
+      sections.forEach(section => {
+        const rect = section.getBoundingClientRect();
+        if (rect.top <= window.innerHeight * 0.5) {
+          activeId = section.id;
+        }
+      });
+    }
+
+    tocLinks.forEach(link => {
+      const href = link.getAttribute('href').slice(1);
+      link.classList.toggle('toc-active', href === activeId);
+    });
+  }, {
+    rootMargin: '0px 0px -50% 0px',
+    threshold: [0, 0.1, 0.25, 0.5, 0.75, 1.0],
+  });
+
+  sections.forEach(s => observer.observe(s));
+
+  // Smooth scroll for TOC links (CSS scroll-behavior handles this,
+  // but this ensures the active state updates immediately on click)
+  tocLinks.forEach(link => {
+    link.addEventListener('click', (e) => {
+      const targetId = link.getAttribute('href').slice(1);
+      tocLinks.forEach(l => l.classList.remove('toc-active'));
+      link.classList.add('toc-active');
+    });
+  });
+</script>
+
+</body>
+</html>
