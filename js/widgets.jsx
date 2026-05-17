@@ -63,21 +63,29 @@ function _relTime(dateStr) {
   return `${Math.floor(diff / 604800)}w`;
 }
 
+function _parseXMLFeed(xml, feed) {
+  const items = Array.from(xml.querySelectorAll('item, entry')).slice(0, 6);
+  return items.map(item => {
+    const get  = sel => item.querySelector(sel)?.textContent?.trim() || '';
+    const raw  = get('title');
+    const title = raw.replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#(\d+);/g,(_,n)=>String.fromCharCode(+n)).replace(/&lt;/g,'<').replace(/&gt;/g,'>');
+    const link = item.querySelector('link[href]')?.getAttribute('href') || get('link') || get('guid');
+    const dateStr = get('pubDate') || get('published') || get('updated');
+    const date = dateStr ? new Date(dateStr) : new Date(0);
+    return { src: feed.name, cat: feed.cat, title: title || null, link, time: _relTime(date), hot: date > new Date(Date.now() - 2*3600000), _date: date };
+  }).filter(s => s.title);
+}
+
 async function _fetchNewsFeeds() {
   const results = await Promise.allSettled(
     NEWS_FEEDS.map(async feed => {
-      const r = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feed.url)}&count=6`);
-      const data = await r.json();
-      if (data.status !== 'ok') return [];
-      return data.items.map(item => ({
-        src:   feed.name,
-        cat:   feed.cat,
-        time:  _relTime(item.pubDate),
-        title: item.title.replace(/&amp;/g, '&').replace(/&#8217;/g, "'").replace(/&#8216;/g, "'").trim(),
-        link:  item.link,
-        hot:   Date.now() - new Date(item.pubDate) < 2 * 3600000,
-        _date: new Date(item.pubDate),
-      }));
+      const r = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(feed.url)}`);
+      if (!r.ok) return [];
+      const { contents } = await r.json();
+      if (!contents) return [];
+      const xml = new DOMParser().parseFromString(contents, 'text/xml');
+      if (xml.querySelector('parsererror')) return [];
+      return _parseXMLFeed(xml, feed);
     })
   );
   return results
