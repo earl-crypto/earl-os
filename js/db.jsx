@@ -218,6 +218,7 @@ function DataProvider({ session, children }) {
   const setTweak = React.useCallback((key, val) => {
     _setTweaks(prev => {
       const next = { ...prev, [key]: val };
+      LS.set("tweaks", next);
       _sb.from("settings").upsert({ user_id: uid, tweaks: next });
       return next;
     });
