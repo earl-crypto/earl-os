@@ -47,9 +47,9 @@ async function _fetchGmailMessages(token) {
 // ─── News helpers ─────────────────────────────────────────────────────────────
 
 const NEWS_FEEDS = [
-  { name: 'BILLBOARD', url: 'https://www.billboard.com/feed/',                    cat: 'industry' },
   { name: 'MBW',       url: 'https://www.musicbusinessworldwide.com/feed/',       cat: 'industry' },
-  { name: 'VARIETY',   url: 'https://variety.com/feed/',                          cat: 'industry' },
+  { name: 'HYPEBOT',   url: 'https://www.hypebot.com/hypebot/atom.xml',           cat: 'industry' },
+  { name: 'BILLBOARD', url: 'https://www.billboard.com/feed/',                    cat: 'industry' },
   { name: 'IQ MAG',    url: 'https://www.iqmag.net/feed/',                        cat: 'touring'  },
   { name: 'FOH',       url: 'https://www.fohonline.com/feed/',                    cat: 'tech'     },
   { name: 'SOS',       url: 'https://www.soundonsound.com/feed',                  cat: 'tech'     },
@@ -66,28 +66,31 @@ function _relTime(dateStr) {
 function _parseXMLFeed(xml, feed) {
   const items = Array.from(xml.querySelectorAll('item, entry')).slice(0, 6);
   return items.map(item => {
-    const get  = sel => item.querySelector(sel)?.textContent?.trim() || '';
-    const raw  = get('title');
+    const get   = sel => item.querySelector(sel)?.textContent?.trim() || '';
+    const raw   = get('title');
     const title = raw.replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#(\d+);/g,(_,n)=>String.fromCharCode(+n)).replace(/&lt;/g,'<').replace(/&gt;/g,'>');
-    const link = item.querySelector('link[href]')?.getAttribute('href') || get('link') || get('guid');
+    const link  = item.querySelector('link[href]')?.getAttribute('href') || get('link') || get('guid');
     const dateStr = get('pubDate') || get('published') || get('updated');
-    const date = dateStr ? new Date(dateStr) : new Date(0);
+    const date  = dateStr ? new Date(dateStr) : new Date(0);
     return { src: feed.name, cat: feed.cat, title: title || null, link, time: _relTime(date), hot: date > new Date(Date.now() - 2*3600000), _date: date };
   }).filter(s => s.title);
 }
 
+async function _fetchOneFeed(feed) {
+  const r = await fetch('https://corsproxy.io/?' + encodeURIComponent(feed.url));
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const text = await r.text();
+  const xml  = new DOMParser().parseFromString(text, 'text/xml');
+  if (xml.querySelector('parsererror')) throw new Error('XML parse error');
+  return _parseXMLFeed(xml, feed);
+}
+
 async function _fetchNewsFeeds() {
-  const results = await Promise.allSettled(
-    NEWS_FEEDS.map(async feed => {
-      const r = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(feed.url)}`);
-      if (!r.ok) return [];
-      const { contents } = await r.json();
-      if (!contents) return [];
-      const xml = new DOMParser().parseFromString(contents, 'text/xml');
-      if (xml.querySelector('parsererror')) return [];
-      return _parseXMLFeed(xml, feed);
-    })
-  );
+  const results = await Promise.allSettled(NEWS_FEEDS.map(_fetchOneFeed));
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled') console.log(`[news] ${NEWS_FEEDS[i].name}: ${r.value.length} items`);
+    else console.warn(`[news] ${NEWS_FEEDS[i].name} failed:`, r.reason?.message);
+  });
   return results
     .filter(r => r.status === 'fulfilled')
     .flatMap(r => r.value)
