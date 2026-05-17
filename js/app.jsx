@@ -302,11 +302,12 @@ function useNow() {
 
 function Root() {
   const session = useAuth();
+  const isMobile = useMobile();
   if (session === undefined) return null;
   if (!session) return <LoginScreen />;
   return (
     <DataProvider session={session}>
-      <App session={session} />
+      {isMobile ? <MobileApp session={session} /> : <App session={session} />}
     </DataProvider>
   );
 }

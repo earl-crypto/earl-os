@@ -1108,6 +1108,67 @@
   }
 
   /* ───── App loading screen ────────────────────────────────────────────── */
+  /* ── Mobile layout ───────────────────────────────────────────────────────── */
+  .m-app {
+    display: flex; flex-direction: column;
+    height: 100dvh; overflow: hidden;
+    background: var(--bg); color: var(--text);
+  }
+  .m-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 12px; height: 48px; flex-shrink: 0;
+    background: var(--surface); border-bottom: 1px solid var(--border-soft);
+  }
+  .m-logo { width: 26px; height: 26px; border-radius: 4px; object-fit: cover; }
+  .m-brand {
+    font-family: var(--ff-display); font-size: 14px; font-weight: 700;
+    letter-spacing: 0.1em; color: var(--text);
+  }
+  .m-mode-badge {
+    display: flex; align-items: center; gap: 5px;
+    font-family: var(--ff-mono); font-size: 9px; letter-spacing: 0.08em;
+    color: var(--text-dim); background: var(--surface-2);
+    border: 1px solid var(--border-soft); border-radius: 4px; padding: 2px 6px;
+  }
+  .m-mode-badge.m-mode-show { color: var(--red-bright); border-color: var(--red-bright); }
+  .m-spacer { flex: 1; }
+  .m-time { font-family: var(--ff-mono); font-size: 13px; color: var(--text-dim); }
+  .m-gear {
+    background: none; border: none; color: var(--text-dim);
+    font-size: 17px; cursor: pointer; padding: 4px; line-height: 1;
+  }
+  .m-content {
+    flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  }
+  .m-pad { padding: 12px; }
+  .m-tabbar {
+    display: flex; flex-shrink: 0;
+    background: var(--surface); border-top: 1px solid var(--border-soft);
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  .m-tab {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 3px; padding: 8px 4px;
+    background: none; border: none; cursor: pointer;
+    color: var(--text-dim); transition: color .15s;
+  }
+  .m-tab.m-tab-active { color: var(--accent); }
+  .m-tab-icon { font-size: 15px; line-height: 1; }
+  .m-tab-label { font-family: var(--ff-mono); font-size: 9px; letter-spacing: 0.06em; }
+  .m-tasks { padding: 12px; display: flex; flex-direction: column; gap: 16px; }
+  .m-section-hd {
+    font-family: var(--ff-mono); font-size: 10px; letter-spacing: 0.1em;
+    color: var(--text-dim); text-transform: uppercase;
+    margin-bottom: 8px; display: flex; align-items: center; gap: 8px;
+  }
+  .m-section-hint { color: var(--red-bright); }
+
+  /* Widget overrides inside mobile layout */
+  .m-content .show-times { grid-template-columns: repeat(4, 1fr); }
+  .m-content .show-hd { flex-wrap: wrap; }
+  .m-content .personal-journal,
+  .m-content .quick-notes { height: auto; }
+
   .app-loading {
     position: fixed; inset: 0;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -1145,6 +1206,7 @@
 <script type="text/babel" src="js/auth.jsx?v=4"></script>
 <script type="text/babel" src="js/db.jsx?v=4"></script>
 <script type="text/babel" src="js/notifications.jsx?v=1"></script>
+<script type="text/babel" src="js/mobile.jsx?v=1"></script>
 <script type="text/babel" src="js/app.jsx?v=4"></script>
 
 </body>
