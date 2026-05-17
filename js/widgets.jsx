@@ -654,18 +654,20 @@ function ShowJournal() {
         return `${String(h).padStart(2,'0')}:${String(mn).padStart(2,'0')}`;
       };
 
-      // Parse schedule lines from a block of text (event description / notes)
+      // Parse schedule lines from a block of text — expects "HH:MM: Label" format
       const parseNotes = (text) => {
         if (!text) return {};
         const plain = text.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&#\d+;/g, ' ');
         const found = {};
         plain.split(/\n|<br\s*\/?>/i).forEach(line => {
-          const timeMatch = line.match(/\b(\d{1,2}:\d{2}\s*(?:[ap]m)?)\b/i);
-          if (!timeMatch) return;
-          const t = normalizeTime(timeMatch[1]);
-          if (!t) return;
+          // Match time at start of line: "7:30 PM: Crew Call" or "19:30 - Show"
+          const m = line.trim().match(/^(\d{1,2}:\d{2}\s*(?:[ap]m)?)\s*[:\-–]+\s*(.+)/i);
+          if (!m) return;
+          const t = normalizeTime(m[1]);
+          const label = m[2];
+          if (!t || !label) return;
           MATCHERS.forEach(({ field, re }) => {
-            if (!found[field] && re.test(line)) found[field] = t;
+            if (!found[field] && re.test(label)) found[field] = t;
           });
         });
         return found;
