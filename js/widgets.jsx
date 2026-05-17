@@ -76,25 +76,10 @@ function _parseXMLFeed(xml, feed) {
   }).filter(s => s.title);
 }
 
-async function _fetchOneFeed(feed) {
-  const r = await fetch('https://corsproxy.io/?' + encodeURIComponent(feed.url));
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  const text = await r.text();
-  const xml  = new DOMParser().parseFromString(text, 'text/xml');
-  if (xml.querySelector('parsererror')) throw new Error('XML parse error');
-  return _parseXMLFeed(xml, feed);
-}
-
 async function _fetchNewsFeeds() {
-  const results = await Promise.allSettled(NEWS_FEEDS.map(_fetchOneFeed));
-  results.forEach((r, i) => {
-    if (r.status === 'fulfilled') console.log(`[news] ${NEWS_FEEDS[i].name}: ${r.value.length} items`);
-    else console.warn(`[news] ${NEWS_FEEDS[i].name} failed:`, r.reason?.message);
-  });
-  return results
-    .filter(r => r.status === 'fulfilled')
-    .flatMap(r => r.value)
-    .sort((a, b) => b._date - a._date);
+  const { data, error } = await _sb.functions.invoke('news-feeds');
+  if (error) throw error;
+  return data || [];
 }
 
 async function _fetchWeather(apiKey, lat, lon) {
