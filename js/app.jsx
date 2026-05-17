@@ -114,7 +114,7 @@ function App({ session }) {
           defaultPos={LAYOUTS.calendar.pos} defaultSize={LAYOUTS.calendar.size}
           hidden={closed.calendar} onClose={() => close("calendar")}
         >
-          <CalendarWidget showDay={showDay} />
+          <CalendarWidget />
         </Window>
 
         <Window

@@ -1,5 +1,70 @@
 // All widget panels for Earl OS.
 
+// ─── Google API helpers ───────────────────────────────────────────────────────
+
+async function _fetchGmailMessages(token) {
+  const listRes = await fetch(
+    'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=10&labelIds=INBOX',
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (listRes.status === 401) throw Object.assign(new Error('auth'), { code: 401 });
+  if (!listRes.ok) throw new Error('Gmail error');
+  const { messages = [] } = await listRes.json();
+
+  const details = await Promise.all(messages.map(({ id }) =>
+    fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    ).then(r => r.json())
+  ));
+
+  const now = new Date();
+  return details.map(m => {
+    const hdr = n => (m.payload?.headers?.find(h => h.name === n) || {}).value || '';
+    const fromRaw = hdr('From');
+    const from = fromRaw.replace(/<[^>]+>/, '').trim().replace(/^"|"$/g, '') || fromRaw.split('@')[0];
+    const date = new Date(hdr('Date'));
+    const diffH = (now - date) / 3600000;
+    const time = diffH < 18
+      ? date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase().replace(' ', '')
+      : diffH < 36 ? 'Yest'
+      : date.toLocaleDateString('en-US', { weekday: 'short' });
+    return {
+      id: m.id,
+      from,
+      subj: hdr('Subject') || '(no subject)',
+      preview: m.snippet || '',
+      time,
+      unread: (m.labelIds || []).includes('UNREAD'),
+      star: (m.labelIds || []).includes('STARRED'),
+      label: fromRaw.match(/@([\w-]+)\./)?.[1] || '',
+    };
+  });
+}
+
+async function _fetchCalendarEvents(token, dateStr) {
+  const start = new Date(dateStr + 'T00:00:00');
+  const end   = new Date(dateStr + 'T23:59:59');
+  const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(start.toISOString())}&timeMax=${encodeURIComponent(end.toISOString())}&singleEvents=true&orderBy=startTime&maxResults=20`;
+  const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (r.status === 401) throw Object.assign(new Error('auth'), { code: 401 });
+  if (!r.ok) throw new Error('Calendar error');
+  const { items = [] } = await r.json();
+  return items.map(e => {
+    const s  = e.start.dateTime ? new Date(e.start.dateTime) : null;
+    const en = e.end.dateTime   ? new Date(e.end.dateTime)   : null;
+    const fmt = d => d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const t = (e.summary || '').toLowerCase();
+    const tag =
+      /load.?in|load.?out|dock/.test(t)          ? 'load'     :
+      /show|doors|curfew|soundcheck/.test(t)      ? 'show'     :
+      /crew|call sheet|debrief/.test(t)           ? 'crew'     :
+      /vip|meet.*greet|talent|artist/.test(t)     ? 'talent'   :
+      /personal|workout|gym|lunch|dinner/.test(t) ? 'personal' : 'ops';
+    return { t: s ? fmt(s) : 'All day', end: en ? fmt(en) : '', title: e.summary || '(no title)', tag };
+  });
+}
+
 // ─── PERSONAL WINDOW ─────────────────────────────────────────────────────────
 function PersonalWidget({ showDay, setShowDay, profile, setProfile }) {
   const quotes = [
@@ -93,40 +158,32 @@ function PersonalWidget({ showDay, setShowDay, profile, setProfile }) {
 }
 
 // ─── CALENDAR (2 DAYS) ───────────────────────────────────────────────────────
-function CalendarWidget({ showDay }) {
-  const today = new Date();
+function CalendarWidget() {
+  const { providerToken } = useData();
+  const today    = new Date();
   const tomorrow = new Date(today.getTime() + 86400000);
-  const fmt = (d) => d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  const todayStr = today.toISOString().slice(0, 10);
+  const tomStr   = tomorrow.toISOString().slice(0, 10);
+  const fmt = d => d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 
-  const todayEvents = showDay ? [
-    { t: "07:30", end: "08:15", title: "Crew breakfast / call sheet review", tag: "crew" },
-    { t: "09:00", end: "13:00", title: "Load-in — The Fillmore", tag: "load" },
-    { t: "13:30", end: "14:30", title: "Catering / hospitality walk", tag: "ops" },
-    { t: "15:00", end: "17:00", title: "Soundcheck", tag: "show" },
-    { t: "18:00", end: "19:00", title: "Meet & greet — VIP", tag: "talent" },
-    { t: "20:00", end: "22:30", title: "DOORS → SHOW → CURFEW", tag: "show", live: true },
-    { t: "22:45", end: "23:30", title: "Settlement w/ promoter", tag: "ops" },
-  ] : [
-    { t: "08:30", end: "09:00", title: "Morning planning + email triage", tag: "ops" },
-    { t: "09:30", end: "10:00", title: "Production call — Atlanta advance", tag: "ops" },
-    { t: "10:30", end: "11:30", title: "Vendor review — Clair / 4Wall quotes", tag: "ops" },
-    { t: "12:00", end: "13:00", title: "Lunch / blocked", tag: "personal" },
-    { t: "14:00", end: "14:45", title: "Routing sync — June leg", tag: "crew" },
-    { t: "15:30", end: "16:30", title: "Tour bus & freight bookings", tag: "ops" },
-    { t: "17:00", end: "17:30", title: "EOD wrap + tomorrow prep", tag: "personal" },
-  ];
+  const [cal, setCal] = React.useState({ today: null, tomorrow: null, err: null });
 
-  const tomorrowEvents = [
-    { t: "07:00", end: "10:00", title: "Bus call → drive to Oakland", tag: "crew" },
-    { t: "11:00", end: "14:00", title: "Load-in — Fox Theater", tag: "load" },
-    { t: "15:30", end: "17:00", title: "Soundcheck", tag: "show" },
-    { t: "20:00", end: "23:00", title: "Show → curfew", tag: "show", live: true },
-  ];
+  React.useEffect(() => {
+    if (!providerToken) return;
+    Promise.all([
+      _fetchCalendarEvents(providerToken, todayStr),
+      _fetchCalendarEvents(providerToken, tomStr),
+    ])
+    .then(([te, tt]) => setCal({ today: te, tomorrow: tt, err: null }))
+    .catch(e => setCal(prev => ({ ...prev, err: e.code === 401 ? 'session' : 'error' })));
+  }, [providerToken]);
 
-  const tagColor = (t) => ({
+  const tagColor = t => ({
     show: "var(--red)", load: "var(--amber)", ops: "var(--blue)",
     crew: "#7da3d9", talent: "#a685c9", personal: "var(--text-faint)",
   }[t] || "var(--text-faint)");
+
+  const notice = t => <div style={{ padding: "8px 0", color: "var(--text-faint)", fontSize: "11px", fontStyle: "italic" }}>{t}</div>;
 
   const Col = ({ date, events, isToday }) => (
     <div className="cal-col">
@@ -135,9 +192,13 @@ function CalendarWidget({ showDay }) {
         {isToday && <div className="cal-today">TODAY</div>}
       </div>
       <div className="cal-events">
-        {events.map((e, i) => (
-          <div key={i} className={"cal-ev" + (e.live ? " cal-ev-live" : "")} style={{ "--evc": tagColor(e.tag) }}>
-            <div className="cal-ev-time">{e.t}<span className="cal-ev-end">→ {e.end}</span></div>
+        {cal.err === 'session' && notice("Session expired — sign out and back in.")}
+        {cal.err === 'error'   && notice("Could not load calendar.")}
+        {!cal.err && events === null && notice("Loading…")}
+        {!cal.err && events?.length === 0 && notice("No events scheduled.")}
+        {!cal.err && (events || []).map((e, i) => (
+          <div key={i} className="cal-ev" style={{ "--evc": tagColor(e.tag) }}>
+            <div className="cal-ev-time">{e.t}{e.end && <span className="cal-ev-end">→ {e.end}</span>}</div>
             <div className="cal-ev-title">{e.title}</div>
           </div>
         ))}
@@ -147,43 +208,62 @@ function CalendarWidget({ showDay }) {
 
   return (
     <div className="calendar">
-      <Col date={today} events={todayEvents} isToday={true} />
+      <Col date={today} events={cal.today} isToday={true} />
       <div className="cal-divider" />
-      <Col date={tomorrow} events={tomorrowEvents} isToday={false} />
+      <Col date={tomorrow} events={cal.tomorrow} isToday={false} />
     </div>
   );
 }
 
 // ─── GMAIL ───────────────────────────────────────────────────────────────────
 function GmailWidget() {
-  const [emails, setEmails] = usePersisted("gmail", [
-    { id: 1, from: "Tasha — The Fillmore", subj: "RE: Tonight's load-in revisions", preview: "Confirmed — dock B is open from 8:30. Production office on 2nd floor…", time: "7:42a", unread: true, star: true, label: "Venue" },
-    { id: 2, from: "Marcus (Tour Mgr)", subj: "June routing v3 attached", preview: "Couple of moves — Nashville → Atlanta swap, see PDF for the new flow…", time: "7:15a", unread: true, star: false, label: "Tour" },
-    { id: 3, from: "Clair Global", subj: "Quote — June tour PA package", preview: "Hi Earl, attached is the revised quote with the additional subs you asked for…", time: "Yest", unread: true, star: false, label: "Vendor" },
-    { id: 4, from: "Janelle / Mgmt", subj: "Press lines for tonight", preview: "Two outlets confirmed for post-show. Talking points attached…", time: "Yest", unread: false, star: true, label: "Talent" },
-    { id: 5, from: "Sam — Catering", subj: "Crew dietary — updated", preview: "Two new vegans, one nut allergy. Will adjust hot meals for Wed onward…", time: "Yest", unread: false, star: false, label: "Hospitality" },
-    { id: 6, from: "Promoter — Live Nation", subj: "Settlement docs — Phoenix", preview: "Final numbers attached. Please review and countersign by EOD…", time: "Tue", unread: false, star: false, label: "Ops" },
-    { id: 7, from: "Lighting Designer", subj: "Show file v.12", preview: "Cleaned up cue 47 and rebuilt the encore. Patched the new movers…", time: "Mon", unread: false, star: false, label: "Show" },
-    { id: 8, from: "Hotel — Kimpton SF", subj: "Group block confirmation", preview: "Block ENT-0426 confirmed, 14 rooms, double check-in window…", time: "Mon", unread: false, star: false, label: "Travel" },
-  ]);
-  const unread = emails.filter(e => e.unread).length;
-  const toggle = (id, key) => setEmails(emails.map(e => e.id === id ? { ...e, [key]: !e[key] } : e));
+  const { providerToken } = useData();
+  const [emails, setEmails]       = React.useState(null);
+  const [localState, setLocal]    = React.useState({});
+  const [loading, setLoading]     = React.useState(true);
+  const [err, setErr]             = React.useState(null);
+
+  const load = React.useCallback(() => {
+    if (!providerToken) { setLoading(false); return; }
+    setLoading(true); setErr(null);
+    _fetchGmailMessages(providerToken)
+      .then(msgs => { setEmails(msgs); setLoading(false); })
+      .catch(e => { setErr(e.code === 401 ? 'session' : 'error'); setLoading(false); });
+  }, [providerToken]);
+
+  React.useEffect(load, [load]);
+
+  const displayed = (emails || []).map(e => ({
+    ...e,
+    unread: localState[e.id]?.unread ?? e.unread,
+    star:   localState[e.id]?.star   ?? e.star,
+  }));
+  const unread = displayed.filter(e => e.unread).length;
+
+  const toggle = (id, key) => setLocal(prev => {
+    const cur = displayed.find(e => e.id === id);
+    return { ...prev, [id]: { ...prev[id], [key]: !(prev[id]?.[key] ?? cur?.[key]) } };
+  });
 
   return (
     <div className="gmail">
       <div className="gmail-hd">
         <div className="gmail-tabs">
-          <span className="gmail-tab gmail-tab-on">Inbox <span className="badge">{unread}</span></span>
+          <span className="gmail-tab gmail-tab-on">Inbox {unread > 0 && <span className="badge">{unread}</span>}</span>
           <span className="gmail-tab">Starred</span>
           <span className="gmail-tab">Sent</span>
         </div>
-        <div className="gmail-search">
-          <span className="search-icon">⌕</span>
-          <span className="search-placeholder">Search mail</span>
-        </div>
+        <button className="gmail-search" onClick={load} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+          <span className="search-icon" style={{ opacity: loading ? 0.4 : 1 }}>↻</span>
+          <span className="search-placeholder">{loading ? 'Loading…' : 'Refresh'}</span>
+        </button>
       </div>
       <div className="gmail-list">
-        {emails.map(e => (
+        {err === 'session' && <div style={{ padding: "12px", color: "var(--text-faint)", fontSize: "11px" }}>Session expired — sign out and back in to reload Gmail.</div>}
+        {err === 'error'   && <div style={{ padding: "12px", color: "var(--text-faint)", fontSize: "11px" }}>Could not load Gmail. Check the API is enabled.</div>}
+        {!err && loading && !emails && <div style={{ padding: "12px", color: "var(--text-faint)", fontSize: "11px" }}>Loading inbox…</div>}
+        {!err && !loading && displayed.length === 0 && <div style={{ padding: "12px", color: "var(--text-faint)", fontSize: "11px" }}>Inbox empty.</div>}
+        {displayed.map(e => (
           <div key={e.id} className={"mail" + (e.unread ? " mail-unread" : "")}>
             <button className={"mail-star" + (e.star ? " on" : "")} onClick={() => toggle(e.id, "star")}>★</button>
             <div className="mail-body" onClick={() => toggle(e.id, "unread")}>
@@ -192,7 +272,7 @@ function GmailWidget() {
                 <span className="mail-time">{e.time}</span>
               </div>
               <div className="mail-line2">
-                <span className="mail-label">{e.label}</span>
+                {e.label && <span className="mail-label">{e.label}</span>}
                 <span className="mail-subj">{e.subj}</span>
               </div>
               <div className="mail-preview">{e.preview}</div>

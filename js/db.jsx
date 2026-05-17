@@ -33,6 +33,7 @@ const TASK_SEEDS = {
 
 function DataProvider({ session, children }) {
   const uid = session.user.id;
+  const providerToken = session.provider_token || null;
   const [ready, setReady] = React.useState(false);
 
   // ── Core state (initialised from localStorage as fast default) ─────────────
@@ -352,7 +353,7 @@ function DataProvider({ session, children }) {
 
   return (
     <DATA_CTX.Provider value={{
-      uid,
+      uid, providerToken,
       profile, setProfile,
       showDay, setShowDay,
       tweaks, setTweak,

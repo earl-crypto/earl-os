@@ -22,7 +22,10 @@ function LoginScreen() {
     setBusy(true);
     await _sb.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin },
+      options: {
+        redirectTo: window.location.origin,
+        scopes: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly',
+      },
     });
   };
 
