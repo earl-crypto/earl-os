@@ -241,6 +241,14 @@ function App({ session }) {
           Show Tasks panel auto-appears the day before, day of, and day after each show date.
         </div>
         <ShowDatesManager dates={showDates} addDate={addShowDate} removeDate={removeShowDate} />
+        <TweakSection label="Google Drive" />
+        <div className="tweak-note">Create a folder in Drive → copy its ID from the URL. Leave blank to save to Drive root.</div>
+        <TweakText
+          label="Drive Folder ID"
+          value={t.driveFolderId || ""}
+          placeholder="paste folder ID…"
+          onChange={(v) => setTweak("driveFolderId", v)}
+        />
         <TweakSection label="Weather" />
         <div className="tweak-note">Get a free API key at tomorrow.io</div>
         <TweakText

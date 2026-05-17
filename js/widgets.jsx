@@ -482,12 +482,74 @@ function QuickNotes() {
   );
 }
 
+// ─── GOOGLE DRIVE EXPORT ─────────────────────────────────────────────────────
+async function _saveToDrive(token, filename, html, folderId) {
+  const meta = { name: filename, mimeType: 'text/html', ...(folderId ? { parents: [folderId] } : {}) };
+  const boundary = 'earl_os_b';
+  const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n${html}\r\n--${boundary}--`;
+  const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
+    body,
+  });
+  if (r.status === 401) throw Object.assign(new Error('No Drive access — sign out and back in.'), { code: 401 });
+  if (!r.ok) throw new Error(`Drive upload failed (${r.status})`);
+  const { id } = await r.json();
+  return `https://drive.google.com/file/d/${id}/view`;
+}
+
+function _driveHtmlShell(title, body) {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
+<style>body{font-family:Georgia,serif;max-width:680px;margin:40px auto;padding:20px;color:#1a1a1a;line-height:1.6}h1{font-size:22px;border-bottom:2px solid #333;padding-bottom:8px}h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#777;margin:20px 0 4px}.meta{display:flex;gap:32px;margin:16px 0}.meta-item{text-align:center}.meta-label{font-size:11px;color:#999;text-transform:uppercase;letter-spacing:.1em}.meta-value{font-size:22px;font-weight:bold}p,td{white-space:pre-wrap}table{width:100%;border-collapse:collapse}td{padding:6px 8px;border-bottom:1px solid #eee;vertical-align:top}td:first-child{width:120px;color:#777;font-size:12px;text-transform:uppercase;letter-spacing:.06em}.foot{margin-top:36px;font-size:11px;color:#aaa;border-top:1px solid #eee;padding-top:8px}</style>
+</head><body>${body}</body></html>`;
+}
+
+function SaveToDriveBtn({ buildHtml, filename }) {
+  const { providerToken, tweaks } = useData();
+  const [state, setState] = React.useState('idle'); // idle | saving | done | err
+  const [url, setUrl]     = React.useState(null);
+  const [msg, setMsg]     = React.useState('');
+
+  const save = async () => {
+    if (!providerToken) { setState('err'); setMsg('No Google session.'); return; }
+    setState('saving');
+    try {
+      const link = await _saveToDrive(providerToken, filename, buildHtml(), tweaks.driveFolderId || '');
+      setUrl(link); setState('done');
+    } catch(e) {
+      setState('err'); setMsg(e.message);
+    }
+  };
+
+  if (state === 'done') return <a href={url} target="_blank" rel="noopener noreferrer" style={{ fontSize: "11px", color: "var(--blue-bright)", textDecoration: "none" }}>✓ Saved — View in Drive ↗</a>;
+  if (state === 'err') return <span style={{ fontSize: "11px", color: "var(--amber)" }}>{msg}</span>;
+  return (
+    <button onClick={save} disabled={state === 'saving'} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 4, padding: "2px 8px", fontSize: "11px", color: "var(--text-dim)", cursor: "pointer" }}>
+      {state === 'saving' ? 'Saving…' : '↑ Save to Drive'}
+    </button>
+  );
+}
+
 // ─── PERSONAL JOURNAL ────────────────────────────────────────────────────────
 function PersonalJournal() {
   const dayKey = new Date().toISOString().slice(0, 10);
   const { journalPersonal, updatePersonalJournal } = useData();
   const entry = journalPersonal[dayKey] || { mood: 3, energy: 3, grateful: "", reflection: "", win: "" };
   const update = (k, v) => updatePersonalJournal(dayKey, k, v);
+
+  const buildHtml = () => {
+    const dateStr = new Date(dayKey).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    return _driveHtmlShell(`Personal Journal · ${dateStr}`, `
+      <h1>Personal Journal</h1><p style="color:#888">${dateStr}</p>
+      <div class="meta">
+        <div class="meta-item"><div class="meta-label">Mood</div><div class="meta-value">${entry.mood || '—'}/5</div></div>
+        <div class="meta-item"><div class="meta-label">Energy</div><div class="meta-value">${entry.energy || '—'}/5</div></div>
+      </div>
+      <h2>Grateful For</h2><p>${entry.grateful || '—'}</p>
+      <h2>Today's Win</h2><p>${entry.win || '—'}</p>
+      <h2>Reflection</h2><p>${entry.reflection || '—'}</p>
+      <div class="foot">Earl OS · Personal Journal · ${dateStr}</div>`);
+  };
 
   const Scale = ({ label, value, onChange, colors }) => (
     <div className="scale-row">
@@ -526,6 +588,9 @@ function PersonalJournal() {
         <label>Reflection</label>
         <textarea className="bare-textarea" value={entry.reflection} onChange={(e) => update("reflection", e.target.value)} placeholder="how was today …" />
       </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", padding: "4px 0 0" }}>
+        <SaveToDriveBtn buildHtml={buildHtml} filename={`Journal-Personal-${dayKey}.html`} />
+      </div>
     </div>
   );
 }
@@ -538,17 +603,33 @@ function ShowJournal() {
     venue: "The Fillmore — San Francisco, CA",
     crewCall: "07:30", tLoadIn: "09:00", soundcheck: "15:00", doors: "20:00", showTime: "20:30", curfew: "23:00",
     attendanceCap: "1150", attendanceActual: "",
-    arrival: "",
-    parking: "",
-    loadIn: "",
-    meals: "",
-    show: "",
-    loadOut: "",
-    depart: "",
-    general: "",
+    arrival: "", parking: "", loadIn: "", meals: "", show: "", loadOut: "", depart: "", general: "",
   };
   const entry = { ...blank, ...(journalShow[dayKey] || {}) };
   const update = (k, v) => updateShowJournal(dayKey, k, v);
+
+  const buildHtml = () => {
+    const dateStr = new Date(dayKey).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const row = (label, val) => val ? `<tr><td>${label}</td><td>${val}</td></tr>` : '';
+    return _driveHtmlShell(`Show Journal · ${entry.venue} · ${dateStr}`, `
+      <h1>Show Journal</h1>
+      <p style="color:#888">${dateStr}</p>
+      <p><strong>${entry.venue}</strong></p>
+      <h2>Schedule</h2>
+      <table>
+        ${row('Crew Call', entry.crewCall)}${row('Load-in', entry.tLoadIn)}${row('Soundcheck', entry.soundcheck)}
+        ${row('Doors', entry.doors)}${row('Show', entry.showTime)}${row('Curfew', entry.curfew)}
+        ${row('Capacity', entry.attendanceCap)}${row('Actual', entry.attendanceActual)}
+        ${entry.attendanceActual && entry.attendanceCap ? row('Fill', Math.round((+entry.attendanceActual / +entry.attendanceCap) * 100) + '%') : ''}
+      </table>
+      <h2>Notes</h2>
+      <table>
+        ${row('Arrival', entry.arrival)}${row('Parking', entry.parking)}${row('Load-in', entry.loadIn)}
+        ${row('Meals', entry.meals)}${row('Show', entry.show)}${row('Load-out', entry.loadOut)}
+        ${row('Depart', entry.depart)}${row('General', entry.general)}
+      </table>
+      <div class="foot">Earl OS · Show Journal · ${dateStr}</div>`);
+  };
 
   const Time = ({ k, label }) => (
     <div className="show-time">
@@ -618,6 +699,9 @@ function ShowJournal() {
             />
           </div>
         ))}
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", padding: "4px 8px 8px" }}>
+        <SaveToDriveBtn buildHtml={buildHtml} filename={`Journal-Show-${dayKey}-${entry.venue.replace(/[^a-z0-9]/gi, '-').slice(0,30)}.html`} />
       </div>
     </div>
   );

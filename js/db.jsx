@@ -150,13 +150,16 @@ function DataProvider({ session, children }) {
   }
 
   async function syncTasks() {
-    const [{ data: templates }, { data: stateRows }, { data: oneoffs }] = await Promise.all([
+    const [{ data: templates, error: tplErr }, { data: stateRows }, { data: oneoffs }] = await Promise.all([
       _sb.from("task_templates").select("*").eq("user_id", uid).order("ord"),
       _sb.from("task_state").select("*").eq("user_id", uid),
       _sb.from("tasks_oneoff").select("*").eq("user_id", uid).order("ord"),
     ]);
 
-    if (templates?.length) {
+    // null means query error — bail rather than clobber with seed data
+    if (tplErr || templates === null) {
+      console.error("[earl-os] task_templates load failed:", tplErr?.message);
+    } else if (templates.length > 0) {
       // Build state map: { [template_id]: { [scope_date]: done } }
       const stateMap = {};
       (stateRows || []).forEach(s => {
@@ -169,7 +172,7 @@ function DataProvider({ session, children }) {
       });
       _setTaskData(data);
     } else {
-      // First time — migrate from localStorage
+      // templates is [] — genuinely first time, migrate from localStorage
       const data = {};
       const lsKeyMap = { office: "tasks:office:template", "show:pre": "tasks:show:pre:template", "show:day": "tasks:show:day:template", "show:post": "tasks:show:post:template" };
       for (const kind of TASK_KINDS) {
@@ -306,7 +309,8 @@ function DataProvider({ session, children }) {
     _setTaskData(prev => {
       const data = prev[kind] || { templates: [], stateMap: {} };
       const ord = data.templates.length;
-      _sb.from("task_templates").insert({ id, user_id: uid, kind, text, ord });
+      _sb.from("task_templates").insert({ id, user_id: uid, kind, text, ord })
+        .then(({ error }) => { if (error) console.error("[earl-os] addTask failed:", error.message); });
       return { ...prev, [kind]: { ...data, templates: [...data.templates, { id, text, ord }] } };
     });
   }, [uid]);
@@ -315,7 +319,8 @@ function DataProvider({ session, children }) {
     _setTaskData(prev => {
       const data = prev[kind] || { templates: [], stateMap: {} };
       const { [id]: _, ...rest } = data.stateMap;
-      _sb.from("task_templates").delete().eq("id", id).eq("user_id", uid);
+      _sb.from("task_templates").delete().eq("id", id).eq("user_id", uid)
+        .then(({ error }) => { if (error) console.error("[earl-os] removeTask failed:", error.message); });
       return { ...prev, [kind]: { templates: data.templates.filter(t => t.id !== id), stateMap: rest } };
     });
   }, [uid]);
