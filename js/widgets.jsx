@@ -46,15 +46,6 @@ async function _fetchGmailMessages(token) {
 
 // ─── News helpers ─────────────────────────────────────────────────────────────
 
-const NEWS_FEEDS = [
-  { name: 'MBW',       url: 'https://www.musicbusinessworldwide.com/feed/',       cat: 'industry' },
-  { name: 'HYPEBOT',   url: 'https://www.hypebot.com/hypebot/atom.xml',           cat: 'industry' },
-  { name: 'BILLBOARD', url: 'https://www.billboard.com/feed/',                    cat: 'industry' },
-  { name: 'IQ MAG',    url: 'https://www.iqmag.net/feed/',                        cat: 'touring'  },
-  { name: 'FOH',       url: 'https://www.fohonline.com/feed/',                    cat: 'tech'     },
-  { name: 'SOS',       url: 'https://www.soundonsound.com/feed',                  cat: 'tech'     },
-];
-
 function _relTime(dateStr) {
   const diff = (Date.now() - new Date(dateStr)) / 1000;
   if (diff < 3600)   return `${Math.floor(diff / 60)}m`;
@@ -63,20 +54,47 @@ function _relTime(dateStr) {
   return `${Math.floor(diff / 604800)}w`;
 }
 
-function _parseXMLFeed(xml, feed) {
-  const items = Array.from(xml.querySelectorAll('item, entry')).slice(0, 6);
-  return items.map(item => {
-    const get   = sel => item.querySelector(sel)?.textContent?.trim() || '';
-    const raw   = get('title');
-    const title = raw.replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#(\d+);/g,(_,n)=>String.fromCharCode(+n)).replace(/&lt;/g,'<').replace(/&gt;/g,'>');
-    const link  = item.querySelector('link[href]')?.getAttribute('href') || get('link') || get('guid');
-    const dateStr = get('pubDate') || get('published') || get('updated');
-    const date  = dateStr ? new Date(dateStr) : new Date(0);
-    return { src: feed.name, cat: feed.cat, title: title || null, link, time: _relTime(date), hot: date > new Date(Date.now() - 2*3600000), _date: date };
-  }).filter(s => s.title);
+function _xmlTag(text, tag) {
+  const m = new RegExp(`<${tag}(?:[^>]*)>([\\s\\S]*?)<\\/${tag}>`, 'i').exec(text);
+  if (!m) return '';
+  return m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim();
+}
+
+function _xmlEntities(s) {
+  return s.replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#(\d+);/g,(_,n)=>String.fromCharCode(+n));
+}
+
+function _parseRSSItems(xml, feed) {
+  const items = [];
+  const pat = /<item[\s>]([\s\S]*?)<\/item>/gi;
+  let m;
+  while ((m = pat.exec(xml)) !== null && items.length < 8) {
+    const c = m[1];
+    const title = _xmlTag(c, 'title');
+    if (!title) continue;
+    const link    = _xmlTag(c, 'link').split('<')[0].trim() || _xmlTag(c, 'guid');
+    const dateStr = _xmlTag(c, 'pubDate');
+    const date    = dateStr ? new Date(dateStr) : new Date(0);
+    items.push({
+      src: feed.name, cat: feed.cat,
+      title: _xmlEntities(title),
+      link,
+      time: _relTime(dateStr),
+      hot:  date.getTime() > Date.now() - 2 * 3600000,
+      _date: date.toISOString(),
+    });
+  }
+  return items;
 }
 
 const _NEWS_CACHE_KEY = 'earl-os:news-cache';
+
+const _NEWS_FEEDS = [
+  { name: 'TOURING',  cat: 'touring',  q: 'concert+tour+live+music+production' },
+  { name: 'INDUSTRY', cat: 'industry', q: 'music+industry+business+streaming'  },
+  { name: 'VENUES',   cat: 'venues',   q: 'concert+venue+arena+amphitheater'   },
+  { name: 'TECH',     cat: 'tech',     q: 'live+sound+audio+production+lighting+rigging' },
+];
 
 async function _fetchNewsFeeds() {
   try {
@@ -87,11 +105,25 @@ async function _fetchNewsFeeds() {
     }
   } catch(e) {}
 
-  const { data, error } = await _sb.functions.invoke('news-feeds');
-  if (error) throw new Error(error.message || 'Edge Function unreachable — deploy it in Supabase Dashboard');
-  if (!data?.items) throw new Error('No items returned from news feed');
+  const results = await Promise.allSettled(
+    _NEWS_FEEDS.map(async feed => {
+      const rssUrl = `https://news.google.com/rss/search?q=${feed.q}&hl=en-US&gl=US&ceid=US:en`;
+      const r = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(rssUrl)}`);
+      if (!r.ok) throw new Error(`${feed.name}: HTTP ${r.status}`);
+      const { contents } = await r.json();
+      if (!contents) throw new Error(`${feed.name}: empty`);
+      return _parseRSSItems(contents, feed);
+    })
+  );
 
-  const items = data.items;
+  const errors = results.filter(r => r.status === 'rejected').map(r => r.reason?.message);
+  const items  = results
+    .filter(r => r.status === 'fulfilled')
+    .flatMap(r => r.value)
+    .sort((a, b) => new Date(b._date) - new Date(a._date));
+
+  if (!items.length) throw new Error(errors[0] || 'No news loaded');
+
   try { sessionStorage.setItem(_NEWS_CACHE_KEY, JSON.stringify({ ts: Date.now(), items })); } catch(e) {}
   return items;
 }
