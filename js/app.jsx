@@ -22,7 +22,8 @@ function toDateStr(d) { return d.toISOString().slice(0, 10); }
 function addDays(d, n) { return new Date(d.getTime() + n * 86400000); }
 
 function App({ session }) {
-  const { profile, setProfile, showDay, setShowDay, tweaks, setTweak, closed, setClosed, showDates, addShowDate, removeShowDate } = useData();
+  const { profile, setProfile, showDay, setShowDay, tweaks, setTweak, closed, setClosed, showDates, addShowDate, removeShowDate, journalShow } = useData();
+  const { permission: notifPerm, requestPermission, sendTest: sendTestNotif } = useNotifications({ showDates, journalShow });
   const t = tweaks;
 
   // Compute today's relationship to nearest show date.
@@ -236,6 +237,22 @@ function App({ session }) {
           value={t.showGrid}
           onChange={(v) => setTweak("showGrid", v)}
         />
+        <TweakSection label="Notifications" />
+        {typeof Notification === "undefined" ? (
+          <div className="tweak-note">Not supported in this browser.</div>
+        ) : notifPerm === "granted" ? (
+          <>
+            <div className="tweak-note">Enabled ✓ — crew call, show time, emcee, curfew, and daily briefing.</div>
+            <TweakButton onClick={sendTestNotif}>Send test notification</TweakButton>
+          </>
+        ) : notifPerm === "denied" ? (
+          <div className="tweak-note">Blocked by browser. Go to Site Settings → Notifications to allow.</div>
+        ) : (
+          <>
+            <div className="tweak-note">Get reminders for crew call, show time, emcee check-in, curfew, and your 8am briefing.</div>
+            <TweakButton onClick={requestPermission}>Enable Notifications</TweakButton>
+          </>
+        )}
         <TweakSection label="Show Schedule" />
         <div className="tweak-note">
           Show Tasks panel auto-appears the day before, day of, and day after each show date.
