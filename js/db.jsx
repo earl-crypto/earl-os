@@ -168,7 +168,9 @@ function DataProvider({ session, children }) {
             .then(({ data }) => { if (data) _setShowDates(data.map(r => r.date)); });
         })
 
-      .subscribe();
+      .subscribe((status, err) => {
+        console.log("[earl-os] realtime:", status, err || "");
+      });
 
     return () => { _sb.removeChannel(ch); };
   }, [ready, uid]);
@@ -309,14 +311,16 @@ function DataProvider({ session, children }) {
   const setProfile = React.useCallback((updates) => {
     _setProfile(prev => {
       const next = { ...prev, ...updates };
-      _sb.from("profiles").upsert({ id: uid, ...next });
+      _sb.from("profiles").upsert({ id: uid, ...next })
+        .then(({ error }) => { if (error) console.error("[earl-os] setProfile failed:", error.message); });
       return next;
     });
   }, [uid]);
 
   const setShowDay = React.useCallback((val) => {
     _setShowDay(val);
-    _sb.from("settings").upsert({ user_id: uid, show_day: val });
+    _sb.from("settings").upsert({ user_id: uid, show_day: val })
+      .then(({ error }) => { if (error) console.error("[earl-os] setShowDay failed:", error.message); });
   }, [uid]);
 
   const setTweak = React.useCallback((key, val) => {
@@ -330,24 +334,28 @@ function DataProvider({ session, children }) {
 
   const setClosed = React.useCallback((obj) => {
     _setClosed(obj);
-    _sb.from("settings").upsert({ user_id: uid, closed_windows: obj });
+    _sb.from("settings").upsert({ user_id: uid, closed_windows: obj })
+      .then(({ error }) => { if (error) console.error("[earl-os] setClosed failed:", error.message); });
   }, [uid]);
 
   const addShowDate = React.useCallback((date) => {
     _setShowDates(prev => {
       if (prev.includes(date)) return prev;
-      _sb.from("show_dates").upsert({ user_id: uid, date });
+      _sb.from("show_dates").upsert({ user_id: uid, date })
+        .then(({ error }) => { if (error) console.error("[earl-os] addShowDate failed:", error.message); });
       return [...prev, date];
     });
   }, [uid]);
 
   const removeShowDate = React.useCallback((date) => {
     _setShowDates(prev => prev.filter(d => d !== date));
-    _sb.from("show_dates").delete().eq("user_id", uid).eq("date", date);
+    _sb.from("show_dates").delete().eq("user_id", uid).eq("date", date)
+      .then(({ error }) => { if (error) console.error("[earl-os] removeShowDate failed:", error.message); });
   }, [uid]);
 
   const _saveNotes = React.useMemo(() => debounce((text) => {
-    _sb.from("notes").upsert({ user_id: uid, text });
+    _sb.from("notes").upsert({ user_id: uid, text })
+      .then(({ error }) => { if (error) console.error("[earl-os] saveNotes failed:", error.message); });
   }, 1000), [uid]);
 
   const setNotes = React.useCallback((text) => {
@@ -358,7 +366,8 @@ function DataProvider({ session, children }) {
   // ── Journals ────────────────────────────────────────────────────────────────
 
   const _savePersonal = React.useMemo(() => debounce((date, entry) => {
-    _sb.from("journal_personal").upsert({ user_id: uid, date, ...entry });
+    _sb.from("journal_personal").upsert({ user_id: uid, date, ...entry })
+      .then(({ error }) => { if (error) console.error("[earl-os] savePersonalJournal failed:", error.message); });
   }, 800), [uid]);
 
   const updatePersonalJournal = React.useCallback((date, key, val) => {
@@ -370,7 +379,8 @@ function DataProvider({ session, children }) {
   }, [_savePersonal]);
 
   const _saveShow = React.useMemo(() => debounce((date, entry) => {
-    _sb.from("journal_show").upsert({ user_id: uid, show_date: date, ...entry });
+    _sb.from("journal_show").upsert({ user_id: uid, show_date: date, ...entry })
+      .then(({ error }) => { if (error) console.error("[earl-os] saveShowJournal failed:", error.message); });
   }, 800), [uid]);
 
   const updateShowJournal = React.useCallback((date, key, val) => {
@@ -400,7 +410,8 @@ function DataProvider({ session, children }) {
         ...data.stateMap,
         [id]: { ...(data.stateMap[id] || {}), [scopeDate]: newDone },
       };
-      _sb.from("task_state").upsert({ user_id: uid, template_id: id, scope_date: scopeDate, done: newDone });
+      _sb.from("task_state").upsert({ user_id: uid, template_id: id, scope_date: scopeDate, done: newDone })
+        .then(({ error }) => { if (error) console.error("[earl-os] toggleTask failed:", error.message); });
       return { ...prev, [kind]: { ...data, stateMap: newStateMap } };
     });
   }, [uid]);
@@ -432,7 +443,8 @@ function DataProvider({ session, children }) {
     _setOneoffTasks(prev => {
       const next = prev.map(t => t.id === id ? { ...t, done: !t.done } : t);
       const task = next.find(t => t.id === id);
-      _sb.from("tasks_oneoff").update({ done: task.done }).eq("id", id).eq("user_id", uid);
+      _sb.from("tasks_oneoff").update({ done: task.done }).eq("id", id).eq("user_id", uid)
+        .then(({ error }) => { if (error) console.error("[earl-os] toggleOneoff failed:", error.message); });
       return next;
     });
   }, [uid]);
@@ -448,7 +460,8 @@ function DataProvider({ session, children }) {
 
   const removeOneoff = React.useCallback((id) => {
     _setOneoffTasks(prev => prev.filter(t => t.id !== id));
-    _sb.from("tasks_oneoff").delete().eq("id", id).eq("user_id", uid);
+    _sb.from("tasks_oneoff").delete().eq("id", id).eq("user_id", uid)
+      .then(({ error }) => { if (error) console.error("[earl-os] removeOneoff failed:", error.message); });
   }, [uid]);
 
   if (!ready) return (
