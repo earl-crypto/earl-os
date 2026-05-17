@@ -660,8 +660,8 @@ function ShowJournal() {
         const plain = text.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&#\d+;/g, ' ');
         const found = {};
         plain.split(/\n|<br\s*\/?>/i).forEach(line => {
-          // Match time at start of line: "7:30 PM: Crew Call" or "19:30 - Show"
-          const m = line.trim().match(/^(\d{1,2}:\d{2}\s*(?:[ap]m)?)\s*[:\-–]+\s*(.+)/i);
+          // Match time at start of line, optional leading bullet: "* 7:30 PM: Crew Call"
+          const m = line.trim().replace(/^[*•\-·]\s*/, '').match(/^(\d{1,2}:\d{2}\s*(?:[ap]m)?)\s*[:\-–]+\s*(.+)/i);
           if (!m) return;
           const t = normalizeTime(m[1]);
           const label = m[2];
