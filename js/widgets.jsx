@@ -484,14 +484,19 @@ function QuickNotes() {
 
 // ─── GOOGLE DRIVE EXPORT ─────────────────────────────────────────────────────
 async function _saveToDrive(token, filename, html, folderId) {
-  const meta = { name: filename, mimeType: 'text/html', ...(folderId ? { parents: [folderId] } : {}) };
-  const boundary = 'earl_os_b';
-  const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n${html}\r\n--${boundary}--`;
-  const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
-    body,
-  });
+  const doUpload = async (parentId) => {
+    const meta = { name: filename, mimeType: 'text/html', ...(parentId ? { parents: [parentId] } : {}) };
+    const boundary = 'earl_os_b';
+    const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n${html}\r\n--${boundary}--`;
+    return fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
+      body,
+    });
+  };
+
+  let r = await doUpload(folderId);
+  if (r.status === 404 && folderId) r = await doUpload(''); // bad folder — retry to Drive root
   if (r.status === 401) throw Object.assign(new Error('No Drive access — sign out and back in.'), { code: 401 });
   if (!r.ok) throw new Error(`Drive upload failed (${r.status})`);
   const { id } = await r.json();
