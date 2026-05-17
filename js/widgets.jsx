@@ -78,8 +78,9 @@ function _parseXMLFeed(xml, feed) {
 
 async function _fetchNewsFeeds() {
   const { data, error } = await _sb.functions.invoke('news-feeds');
-  if (error) throw error;
-  return data || [];
+  if (error) throw new Error('Edge Function error: ' + (error.message || JSON.stringify(error)));
+  if (!data?.items) throw new Error('No data returned from news-feeds function');
+  return data.items;
 }
 
 async function _fetchWeather(apiKey, lat, lon) {
@@ -967,15 +968,14 @@ function NewsWidget() {
   const [filter, setFilter] = React.useState("all");
   const [stories, setStories] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
+  const [err, setErr]         = React.useState(null);
   const [lastRefresh, setLastRefresh] = React.useState(null);
 
   const load = React.useCallback(() => {
-    setLoading(true);
-    _fetchNewsFeeds().then(items => {
-      setStories(items);
-      setLoading(false);
-      setLastRefresh(new Date());
-    }).catch(() => setLoading(false));
+    setLoading(true); setErr(null);
+    _fetchNewsFeeds()
+      .then(items => { setStories(items); setLoading(false); setLastRefresh(new Date()); })
+      .catch(e => { setErr(e?.message || 'Unknown error'); setLoading(false); });
   }, []);
 
   React.useEffect(load, [load]);
@@ -1005,9 +1005,8 @@ function NewsWidget() {
         ))}
       </div>
       <div className="news-list">
-        {loading && stories.length === 0 && (
-          <div style={{ padding: "12px", color: "var(--text-faint)", fontSize: "11px" }}>Loading feeds…</div>
-        )}
+        {loading && stories.length === 0 && <div style={{ padding: "12px", color: "var(--text-faint)", fontSize: "11px" }}>Loading feeds…</div>}
+        {err && <div style={{ padding: "12px", color: "var(--amber)", fontSize: "11px", lineHeight: 1.5 }}>{err}</div>}
         {filtered.map((s, i) => (
           <a key={i} href={s.link} target="_blank" rel="noopener noreferrer"
              className={"news-item" + (s.hot ? " news-hot" : "")}
