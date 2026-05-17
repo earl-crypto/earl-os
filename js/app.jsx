@@ -36,7 +36,7 @@ const LAYOUTS = {
 function toDateStr(d) { return d.toISOString().slice(0, 10); }
 function addDays(d, n) { return new Date(d.getTime() + n * 86400000); }
 
-function App() {
+function App({ session }) {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const [showDay, setShowDay] = usePersisted("mode:show", true);
   const [profile, setProfile] = usePersisted("profile", DEFAULT_PROFILE);
@@ -112,6 +112,11 @@ function App() {
             ))}
           </div>
           <a href="tech-design.html" className="menubar-techdoc" title="Tech Design Document">Tech Doc</a>
+          <button className="menubar-signout" title="Sign out" onClick={() => _sb.auth.signOut()}>
+            {session?.user?.user_metadata?.avatar_url
+              ? <img src={session.user.user_metadata.avatar_url} className="menubar-avatar" alt="" />
+              : '⎋'}
+          </button>
           <span className="menubar-time">{timeStr}</span>
         </div>
       </div>
@@ -305,4 +310,11 @@ function useNow() {
   return now;
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+function Root() {
+  const session = useAuth();
+  if (session === undefined) return null; // still loading
+  if (!session) return <LoginScreen />;
+  return <App session={session} />;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<Root />);
