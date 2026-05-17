@@ -2,6 +2,8 @@
 // Loads all user data on login, migrates localStorage on first sign-in,
 // and exposes read/write operations via DataContext.
 
+console.log("[earl-os] db.jsx loaded v4");
+
 const DATA_CTX = React.createContext(null);
 function useData() { return React.useContext(DATA_CTX); }
 
