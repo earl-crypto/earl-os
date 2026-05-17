@@ -25,6 +25,8 @@ function App({ session }) {
   const { profile, setProfile, showDay, setShowDay, tweaks, setTweak, closed, setClosed, showDates, addShowDate, removeShowDate, journalShow } = useData();
   const { permission: notifPerm, requestPermission, sendTest: sendTestNotif } = useNotifications({ showDates, journalShow });
   const t = tweaks;
+  const { locked, unlock } = useIdleLock(t.autoLock, t.autoLockMins || 30);
+  if (locked) return <LockScreen onUnlock={unlock} wallpaper={t.wallpaper} />;
 
   // Compute today's relationship to nearest show date.
   const showContext = React.useMemo(() => {
@@ -252,6 +254,20 @@ function App({ session }) {
             <div className="tweak-note">Get reminders for crew call, show time, emcee check-in, curfew, and your 8am briefing.</div>
             <TweakButton onClick={requestPermission}>Enable Notifications</TweakButton>
           </>
+        )}
+        <TweakSection label="Auto-lock" />
+        <TweakToggle
+          label="Lock on idle"
+          value={t.autoLock || false}
+          onChange={(v) => setTweak("autoLock", v)}
+        />
+        {t.autoLock && (
+          <TweakSelect
+            label="Lock after"
+            value={String(t.autoLockMins || 30)}
+            options={["5", "15", "30", "60"]}
+            onChange={(v) => setTweak("autoLockMins", Number(v))}
+          />
         )}
         <TweakSection label="Show Schedule" />
         <div className="tweak-note">

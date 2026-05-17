@@ -1169,6 +1169,55 @@
   .m-content .personal-journal,
   .m-content .quick-notes { height: auto; }
 
+  /* ───── Lock screen ──────────────────────────────────────────────────── */
+  .lock-screen {
+    position: fixed; inset: 0; z-index: 2147483647;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+  }
+  .lock-screen.wp-navy {
+    background: radial-gradient(ellipse at 20% 15%, rgba(66,103,163,0.14), transparent 50%),
+      radial-gradient(ellipse at 80% 90%, rgba(168,50,59,0.10), transparent 55%),
+      linear-gradient(180deg, #0a1426 0%, #050b16 100%);
+  }
+  .lock-screen.wp-ink { background: linear-gradient(180deg, #08101e 0%, #04080f 100%); }
+  .lock-screen.wp-carbon {
+    background: repeating-linear-gradient(45deg, #0a1424 0 8px, #0c1828 8px 16px);
+  }
+  .lock-screen.wp-logoTile {
+    background: radial-gradient(ellipse at 20% 15%, rgba(66,103,163,0.14), transparent 50%),
+      radial-gradient(ellipse at 80% 90%, rgba(168,50,59,0.10), transparent 55%),
+      linear-gradient(180deg, #0a1426 0%, #050b16 100%);
+  }
+  .lock-inner {
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    user-select: none;
+  }
+  .lock-logo {
+    width: 72px; height: 72px; border-radius: 14px; object-fit: cover;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.08), 0 12px 32px rgba(0,0,0,.5);
+    margin-bottom: 8px;
+  }
+  .lock-time {
+    font-family: var(--ff-display); font-size: 72px; font-weight: 700;
+    letter-spacing: -0.02em; color: var(--text); line-height: 1;
+  }
+  .lock-date {
+    font-family: var(--ff-display); font-size: 18px; font-weight: 500;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--text-2);
+  }
+  .lock-brand {
+    font-family: var(--ff-display); font-size: 13px; font-weight: 700;
+    letter-spacing: 0.3em; color: var(--text-faint);
+    margin-top: 16px;
+  }
+  .lock-hint {
+    font-family: var(--ff-mono); font-size: 11px;
+    color: var(--text-faint); letter-spacing: 0.08em;
+    animation: dotpulse 3s ease-in-out infinite;
+  }
+
   .app-loading {
     position: fixed; inset: 0;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -1206,6 +1255,7 @@
 <script type="text/babel" src="js/auth.jsx?v=4"></script>
 <script type="text/babel" src="js/db.jsx?v=4"></script>
 <script type="text/babel" src="js/notifications.jsx?v=1"></script>
+<script type="text/babel" src="js/lock.jsx?v=1"></script>
 <script type="text/babel" src="js/mobile.jsx?v=1"></script>
 <script type="text/babel" src="js/app.jsx?v=4"></script>
 

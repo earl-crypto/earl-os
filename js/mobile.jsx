@@ -18,6 +18,8 @@ function MobileApp({ session }) {
   const { permission: notifPerm, requestPermission } = useNotifications({ showDates, journalShow });
   const [tab, setTab] = React.useState("tasks");
   const t = tweaks;
+  const { locked, unlock } = useIdleLock(t.autoLock, t.autoLockMins || 30);
+  if (locked) return <LockScreen onUnlock={unlock} wallpaper={t.wallpaper} />;
 
   const now = React.useMemo(() => new Date(), []);
   const [tick, setTick] = React.useState(0);
