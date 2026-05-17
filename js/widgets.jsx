@@ -634,7 +634,7 @@ function ShowJournal() {
       const { items = [] } = await r.json();
 
       const MATCHERS = [
-        { field: "crew_call",  re: /crew.?call|call.?time/i },
+        { field: "crew_call",  re: /walk.?and.?chalk|walk.*chalk|crew.?call|call.?time/i },
         { field: "t_load_in",  re: /load.?in/i },
         { field: "soundcheck", re: /sound.?check/i },
         { field: "doors",      re: /\bdoors?\b/i },
@@ -718,7 +718,7 @@ function ShowJournal() {
       <p><strong>${entry.venue}</strong></p>
       <h2>Schedule</h2>
       <table>
-        ${row('Crew Call', entry.crew_call)}${row('Load-in', entry.t_load_in)}${row('Soundcheck', entry.soundcheck)}
+        ${row('Walk & Chalk', entry.crew_call)}${row('Load-in', entry.t_load_in)}${row('Soundcheck', entry.soundcheck)}
         ${row('Doors', entry.doors)}${row('Show', entry.show_time)}${row('Emcee', entry.emcee_time)}${row('Curfew', entry.curfew)}
         ${row('Capacity', entry.attendance_cap)}${row('Actual', entry.attendance_actual)}
         ${entry.attendance_actual && entry.attendance_cap ? row('Fill', Math.round((+entry.attendance_actual / +entry.attendance_cap) * 100) + '%') : ''}
@@ -766,7 +766,7 @@ function ShowJournal() {
       </div>
 
       <div className="show-times">
-        <Time k="crew_call" label="Crew Call" />
+        <Time k="crew_call" label="Walk & Chalk" />
         <Time k="t_load_in" label="Load-in" />
         <Time k="soundcheck" label="Soundcheck" />
         <Time k="doors" label="Doors" />

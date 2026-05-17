@@ -80,7 +80,7 @@ function useNotifications({ showDates, journalShow }) {
 
       const v = entry.venue ? ` · ${entry.venue}` : "";
 
-      before(entry.crew_call,  30, "crew-30",   "Crew Call in 30 min",   `Crew call soon${v}. Radios charged?`);
+      before(entry.crew_call,  30, "crew-30",   "Walk & Chalk in 30 min", `Walk and chalk starting soon${v}. Radios charged?`);
       before(entry.emcee_time, 15, "emcee-15",  "Emcee On in 15 min",    `Emcee time approaching${v}. Are they backstage?`);
       before(entry.show_time,  60, "show-60",   "Show in 1 Hour",        `Doors open soon${v}. Time for final walkthrough.`);
       before(entry.show_time,  30, "show-30",   "Show in 30 Minutes",    `30 minutes to showtime${v}. You got this.`);
