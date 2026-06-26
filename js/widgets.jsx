@@ -373,7 +373,7 @@ function PersonalWidget({ showDay, setShowDay, profile, setProfile }) {
 
 // ─── CALENDAR (2 DAYS) ───────────────────────────────────────────────────────
 function CalendarWidget() {
-  const { providerToken } = useData();
+  const { providerToken, refreshProviderToken } = useData();
   const today    = new Date();
   const tomorrow = new Date(today.getTime() + 86400000);
   const todayStr = today.toISOString().slice(0, 10);
@@ -384,12 +384,21 @@ function CalendarWidget() {
 
   React.useEffect(() => {
     if (!providerToken) return;
+    setCal(prev => ({ ...prev, err: null }));
     Promise.all([
       _fetchCalendarEvents(providerToken, todayStr),
       _fetchCalendarEvents(providerToken, tomStr),
     ])
     .then(([te, tt]) => setCal({ today: te, tomorrow: tt, err: null }))
-    .catch(e => setCal(prev => ({ ...prev, err: e.code === 401 ? 'session' : 'error' })));
+    .catch(async e => {
+      if (e.code === 401) {
+        const fresh = await refreshProviderToken();
+        if (!fresh) setCal(prev => ({ ...prev, err: 'session' }));
+        // fresh token → providerToken state updates → this effect re-runs automatically
+      } else {
+        setCal(prev => ({ ...prev, err: 'error' }));
+      }
+    });
   }, [providerToken]);
 
   const tagColor = t => ({
@@ -444,7 +453,7 @@ function CalendarWidget() {
 
 // ─── GMAIL ───────────────────────────────────────────────────────────────────
 function GmailWidget() {
-  const { providerToken } = useData();
+  const { providerToken, refreshProviderToken } = useData();
   const [emails, setEmails]       = React.useState(null);
   const [localState, setLocal]    = React.useState({});
   const [loading, setLoading]     = React.useState(true);
@@ -455,7 +464,15 @@ function GmailWidget() {
     setLoading(true); setErr(null);
     _fetchGmailMessages(providerToken)
       .then(msgs => { setEmails(msgs); setLoading(false); })
-      .catch(e => { setErr(e.code === 401 ? 'session' : 'error'); setLoading(false); });
+      .catch(async e => {
+        if (e.code === 401) {
+          const fresh = await refreshProviderToken();
+          if (!fresh) { setErr('session'); setLoading(false); }
+          // fresh token → providerToken state updates → load re-runs automatically
+        } else {
+          setErr('error'); setLoading(false);
+        }
+      });
   }, [providerToken]);
 
   React.useEffect(load, [load]);

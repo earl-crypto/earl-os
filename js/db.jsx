@@ -33,8 +33,26 @@ const TASK_SEEDS = {
 
 function DataProvider({ session, children }) {
   const uid = session.user.id;
-  const providerToken = session.provider_token || null;
+  const [providerToken, _setProviderToken] = React.useState(session.provider_token || null);
   const [ready, setReady] = React.useState(false);
+
+  // Keep provider token fresh — Supabase auto-refreshes the JWT every ~50 min
+  // and the new session will carry an updated Google access token.
+  React.useEffect(() => {
+    const { data: { subscription } } = _sb.auth.onAuthStateChange((_e, s) => {
+      if (s?.provider_token) _setProviderToken(s.provider_token);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const refreshProviderToken = React.useCallback(async () => {
+    const { data } = await _sb.auth.refreshSession();
+    if (data?.session?.provider_token) {
+      _setProviderToken(data.session.provider_token);
+      return data.session.provider_token;
+    }
+    return null;
+  }, []);
 
   // ── Core state (initialised from localStorage as fast default) ─────────────
   const [profile,   _setProfile]   = React.useState(LS.get("profile", DEFAULT_PROFILE));
@@ -473,7 +491,7 @@ function DataProvider({ session, children }) {
 
   return (
     <DATA_CTX.Provider value={{
-      uid, providerToken,
+      uid, providerToken, refreshProviderToken,
       profile, setProfile,
       showDay, setShowDay,
       tweaks, setTweak,
