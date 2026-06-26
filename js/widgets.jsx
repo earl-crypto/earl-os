@@ -166,15 +166,44 @@ function _windDir(deg) {
 async function _fetchCalendarEvents(token, dateStr) {
   const start = new Date(dateStr + 'T00:00:00');
   const end   = new Date(dateStr + 'T23:59:59');
-  const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(start.toISOString())}&timeMax=${encodeURIComponent(end.toISOString())}&singleEvents=true&orderBy=startTime&maxResults=20`;
-  const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  if (r.status === 401) throw Object.assign(new Error('auth'), { code: 401 });
-  if (!r.ok) throw new Error('Calendar error');
-  const { items = [] } = await r.json();
-  return items.map(e => {
+  const authHdr = { Authorization: `Bearer ${token}` };
+
+  // 1. Get all calendars the user has access to
+  const listRes = await fetch(
+    'https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=50',
+    { headers: authHdr }
+  );
+  if (listRes.status === 401) throw Object.assign(new Error('auth'), { code: 401 });
+  if (!listRes.ok) throw new Error('Calendar error');
+  const { items: cals = [] } = await listRes.json();
+
+  // 2. Fetch events from all visible, non-declined calendars in parallel
+  const activeCals = cals.filter(c => !c.hidden && c.selected !== false);
+  const params = `timeMin=${encodeURIComponent(start.toISOString())}&timeMax=${encodeURIComponent(end.toISOString())}&singleEvents=true&orderBy=startTime&maxResults=50`;
+  const allItems = await Promise.all(
+    activeCals.map(c =>
+      fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(c.id)}/events?${params}`, { headers: authHdr })
+        .then(r => r.ok ? r.json() : { items: [] })
+        .then(({ items = [] }) => items)
+    )
+  );
+
+  // 3. Flatten, deduplicate by event id, and sort by start time
+  const seen = new Set();
+  const events = allItems.flat().filter(e => {
+    if (seen.has(e.id)) return false;
+    seen.add(e.id);
+    return true;
+  }).sort((a, b) => {
+    const ta = a.start.dateTime || a.start.date || '';
+    const tb = b.start.dateTime || b.start.date || '';
+    return ta.localeCompare(tb);
+  });
+
+  const fmt = d => d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return events.map(e => {
     const s  = e.start.dateTime ? new Date(e.start.dateTime) : null;
     const en = e.end.dateTime   ? new Date(e.end.dateTime)   : null;
-    const fmt = d => d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
     const t = (e.summary || '').toLowerCase();
     const tag =
       /load.?in|load.?out|dock/.test(t)          ? 'load'     :
