@@ -36,6 +36,12 @@ function DataProvider({ session, children }) {
   const [providerToken, _setProviderToken] = React.useState(session.provider_token || null);
   const [ready, setReady] = React.useState(false);
 
+  // Suppress Realtime echo: after a local write, ignore incoming events for that
+  // table for 5 seconds so active typing isn't overwritten by our own DB echo.
+  const _suppressUntil = React.useRef({ notes: 0, journal_personal: 0, journal_show: 0, profile: 0 });
+  const _touch = (table) => { _suppressUntil.current[table] = Date.now() + 5000; };
+  const _suppressed = (table) => Date.now() < _suppressUntil.current[table];
+
   // Keep provider token fresh — Supabase auto-refreshes the JWT every ~50 min
   // and the new session will carry an updated Google access token.
   React.useEffect(() => {
@@ -154,17 +160,22 @@ function DataProvider({ session, children }) {
 
       // notes
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notes', filter: `user_id=eq.${uid}` },
-        ({ new: row }) => { if (row?.text != null) _setNotes(row.text); })
+        ({ new: row }) => {
+          if (_suppressed('notes')) return;
+          if (row?.text != null) _setNotes(row.text);
+        })
 
       // journals
       .on('postgres_changes', { event: '*', schema: 'public', table: 'journal_personal', filter: `user_id=eq.${uid}` },
         ({ new: row }) => {
+          if (_suppressed('journal_personal')) return;
           if (!row?.date) return;
           const { user_id, updated_at, ...entry } = row;
           _setJournalPersonal(prev => ({ ...prev, [row.date]: entry }));
         })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'journal_show', filter: `user_id=eq.${uid}` },
         ({ new: row }) => {
+          if (_suppressed('journal_show')) return;
           if (!row?.show_date) return;
           const { user_id, updated_at, ...rest } = row;
           _setJournalShow(prev => ({ ...prev, [row.show_date]: rest }));
@@ -377,6 +388,7 @@ function DataProvider({ session, children }) {
   }, 1000), [uid]);
 
   const setNotes = React.useCallback((text) => {
+    _touch('notes');
     _setNotes(text);
     _saveNotes(text);
   }, [_saveNotes]);
@@ -389,6 +401,7 @@ function DataProvider({ session, children }) {
   }, 800), [uid]);
 
   const updatePersonalJournal = React.useCallback((date, key, val) => {
+    _touch('journal_personal');
     _setJournalPersonal(prev => {
       const entry = { mood: 3, energy: 3, grateful: "", win: "", reflection: "", ...(prev[date] || {}), [key]: val };
       _savePersonal(date, entry);
@@ -402,6 +415,7 @@ function DataProvider({ session, children }) {
   }, 800), [uid]);
 
   const updateShowJournal = React.useCallback((date, key, val) => {
+    _touch('journal_show');
     _setJournalShow(prev => {
       const entry = { ...(prev[date] || {}), [key]: val };
       _saveShow(date, entry);
