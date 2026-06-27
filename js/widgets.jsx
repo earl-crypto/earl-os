@@ -5,6 +5,51 @@ function _localDateStr(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
+// Keeps local input state while typing; debounces save to context/DB.
+// Syncs FROM server only when the field is not focused (cross-device update).
+function useLiveField(serverVal, save) {
+  const [local, setLocal] = React.useState(serverVal ?? '');
+  const active  = React.useRef(false);
+  const saveRef = React.useRef(save);
+  saveRef.current = save;
+  const timer = React.useRef(null);
+  React.useEffect(() => {
+    if (!active.current) setLocal(serverVal ?? '');
+  }, [serverVal]);
+  const onFocus  = React.useCallback(() => { active.current = true; }, []);
+  const onBlur   = React.useCallback((e) => { active.current = false; clearTimeout(timer.current); saveRef.current(e.target.value); }, []);
+  const onChange = React.useCallback((e) => {
+    const v = e.target.value;
+    setLocal(v);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => saveRef.current(v), 1500);
+  }, []);
+  return { value: local, onFocus, onBlur, onChange };
+}
+
+// Render-prop wrapper for live fields inside .map() (hooks can't be called in loops).
+function LiveField({ value, onSave, children }) {
+  const [local, setLocal] = React.useState(value ?? '');
+  const active  = React.useRef(false);
+  const saveRef = React.useRef(onSave);
+  saveRef.current = onSave;
+  const timer = React.useRef(null);
+  React.useEffect(() => {
+    if (!active.current) setLocal(value ?? '');
+  }, [value]);
+  return children({
+    value: local,
+    onFocus:  () => { active.current = true; },
+    onBlur:   (e) => { active.current = false; clearTimeout(timer.current); saveRef.current(e.target.value); },
+    onChange:  (e) => {
+      const v = e.target.value;
+      setLocal(v);
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => saveRef.current(v), 1500);
+    },
+  });
+}
+
 // ─── Google API helpers ───────────────────────────────────────────────────────
 
 async function _fetchGmailMessages(token) {
@@ -335,6 +380,13 @@ function PersonalWidget({ showDay, setShowDay, profile, setProfile }) {
   ];
   const status = statuses.find(s => s.id === profile.status) || statuses[0];
 
+  const profileRef = React.useRef(profile);
+  profileRef.current = profile;
+  const nameField  = useLiveField(profile.name,  React.useCallback((v) => setProfile({ ...profileRef.current, name:  v }), [setProfile]));
+  const titleField = useLiveField(profile.title, React.useCallback((v) => setProfile({ ...profileRef.current, title: v }), [setProfile]));
+  const eventField = useLiveField(profile.event, React.useCallback((v) => setProfile({ ...profileRef.current, event: v }), [setProfile]));
+  const venueField = useLiveField(profile.venue, React.useCallback((v) => setProfile({ ...profileRef.current, venue: v }), [setProfile]));
+
   return (
     <div className="personal">
       <div className="personal-top">
@@ -342,22 +394,14 @@ function PersonalWidget({ showDay, setShowDay, profile, setProfile }) {
           <img src="assets/earl-avatar.jpeg" alt="Earl Neal" />
         </div>
         <div className="personal-id">
-          <input
-            className="bare-input personal-name"
-            value={profile.name}
-            onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-          />
-          <input
-            className="bare-input personal-title"
-            value={profile.title}
-            onChange={(e) => setProfile({ ...profile, title: e.target.value })}
-          />
+          <input className="bare-input personal-name"  {...nameField} />
+          <input className="bare-input personal-title" {...titleField} />
           <div className="status-row">
             <span className="status-dot" style={{ background: status.color }} />
             <select
               className="bare-select"
               value={profile.status}
-              onChange={(e) => setProfile({ ...profile, status: e.target.value })}
+              onChange={(e) => setProfile({ ...profileRef.current, status: e.target.value })}
             >
               {statuses.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
             </select>
@@ -367,16 +411,8 @@ function PersonalWidget({ showDay, setShowDay, profile, setProfile }) {
 
       <div className="now-block">
         <div className="now-label">Now Running</div>
-        <input
-          className="bare-input now-artist"
-          value={profile.event}
-          onChange={(e) => setProfile({ ...profile, event: e.target.value })}
-        />
-        <input
-          className="bare-input now-venue"
-          value={profile.venue}
-          onChange={(e) => setProfile({ ...profile, venue: e.target.value })}
-        />
+        <input className="bare-input now-artist" {...eventField} />
+        <input className="bare-input now-venue"  {...venueField} />
       </div>
 
       <div className="mode-toggle">
@@ -607,17 +643,17 @@ function TaskList({ accent, emptyText, dimmed }) {
 
 // ─── QUICK NOTES ─────────────────────────────────────────────────────────────
 function QuickNotes() {
-  const { notes: text, setNotes: setText } = useData();
+  const { notes: serverText, setNotes } = useData();
+  const lf = useLiveField(serverText, setNotes);
   return (
     <div className="notes">
       <textarea
         className="notes-area"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
+        {...lf}
         placeholder="brain dump · ideas · phone numbers · serial numbers · anything …"
       />
       <div className="notes-foot">
-        <span className="notes-stamp">{text.length} chars</span>
+        <span className="notes-stamp">{lf.value.length} chars</span>
         <span className="notes-stamp">Autosaved</span>
       </div>
     </div>
@@ -714,6 +750,10 @@ function PersonalJournal() {
     </div>
   );
 
+  const gratefulField    = useLiveField(entry.grateful,   (v) => update("grateful",   v));
+  const winField         = useLiveField(entry.win,        (v) => update("win",        v));
+  const reflectionField  = useLiveField(entry.reflection, (v) => update("reflection", v));
+
   return (
     <div className="journal">
       <div className="journal-date">{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</div>
@@ -725,15 +765,15 @@ function PersonalJournal() {
       </div>
       <div className="journal-field">
         <label>One thing I'm grateful for</label>
-        <input className="bare-input" value={entry.grateful} onChange={(e) => update("grateful", e.target.value)} placeholder="…" />
+        <input className="bare-input" {...gratefulField} placeholder="…" />
       </div>
       <div className="journal-field">
         <label>Win of the day</label>
-        <input className="bare-input" value={entry.win} onChange={(e) => update("win", e.target.value)} placeholder="…" />
+        <input className="bare-input" {...winField} placeholder="…" />
       </div>
       <div className="journal-field journal-field-grow">
         <label>Reflection</label>
-        <textarea className="bare-textarea" value={entry.reflection} onChange={(e) => update("reflection", e.target.value)} placeholder="how was today …" />
+        <textarea className="bare-textarea" {...reflectionField} placeholder="how was today …" />
       </div>
       <div style={{ display: "flex", justifyContent: "flex-end", padding: "4px 0 0" }}>
         <SaveToDriveBtn buildHtml={buildHtml} filename={`Journal-Personal-${dayKey}.html`} />
@@ -873,12 +913,15 @@ function ShowJournal() {
       <div class="foot">Earl OS · Show Journal · ${dateStr}</div>`);
   };
 
-  const Time = ({ k, label }) => (
-    <div className="show-time">
-      <span className="show-time-label">{label}</span>
-      <input className="bare-input show-time-input" value={entry[k]} onChange={(e) => update(k, e.target.value)} />
-    </div>
-  );
+  const Time = ({ k, label }) => {
+    const lf = useLiveField(entry[k], (v) => update(k, v));
+    return (
+      <div className="show-time">
+        <span className="show-time-label">{label}</span>
+        <input className="bare-input show-time-input" {...lf} />
+      </div>
+    );
+  };
 
   const sections = [
     { k: "arrival",  label: "Arrival",   ph: "time · who's already there · access" },
@@ -891,11 +934,15 @@ function ShowJournal() {
     { k: "general",  label: "General Notes", ph: "anything else worth remembering…" },
   ];
 
+  const venueLF  = useLiveField(entry.venue,              (v) => update("venue",              v));
+  const capLF    = useLiveField(entry.attendance_cap,    (v) => update("attendance_cap",    v));
+  const actualLF = useLiveField(entry.attendance_actual, (v) => update("attendance_actual", v));
+
   return (
     <div className="show-journal">
       <div className="show-hd">
         <div className="show-hd-venue">
-          <input className="bare-input show-venue" value={entry.venue} onChange={(e) => update("venue", e.target.value)} />
+          <input className="bare-input show-venue" {...venueLF} />
         </div>
         <div className="show-hd-right">
           {importMsg && <span className="show-import-msg">{importMsg}</span>}
@@ -919,17 +966,17 @@ function ShowJournal() {
       <div className="show-attend">
         <div className="show-attend-cell">
           <label>Cap</label>
-          <input className="bare-input" value={entry.attendance_cap} onChange={(e) => update("attendance_cap", e.target.value)} />
+          <input className="bare-input" {...capLF} />
         </div>
         <div className="show-attend-cell">
           <label>Actual</label>
-          <input className="bare-input" value={entry.attendance_actual} onChange={(e) => update("attendance_actual", e.target.value)} placeholder="—" />
+          <input className="bare-input" {...actualLF} placeholder="—" />
         </div>
         <div className="show-attend-cell show-attend-fill">
           <label>Fill</label>
           <div className="show-fill-val">
-            {entry.attendance_actual && entry.attendance_cap
-              ? Math.round((+entry.attendance_actual / +entry.attendance_cap) * 100) + "%"
+            {actualLF.value && capLF.value
+              ? Math.round((+actualLF.value / +capLF.value) * 100) + "%"
               : "—"}
           </div>
         </div>
@@ -939,13 +986,16 @@ function ShowJournal() {
         {sections.map(({ k, label, ph }) => (
           <div key={k} className="show-field">
             <label>{label}</label>
-            <textarea
-              className="bare-textarea"
-              rows={k === "general" ? 3 : 2}
-              value={entry[k]}
-              onChange={(e) => update(k, e.target.value)}
-              placeholder={ph}
-            />
+            <LiveField value={entry[k]} onSave={(v) => update(k, v)}>
+              {(props) => (
+                <textarea
+                  className="bare-textarea"
+                  rows={k === "general" ? 3 : 2}
+                  placeholder={ph}
+                  {...props}
+                />
+              )}
+            </LiveField>
           </div>
         ))}
       </div>
