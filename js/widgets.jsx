@@ -452,9 +452,8 @@ function CalendarWidget() {
 
   const [cal, setCal] = React.useState({ today: null, tomorrow: null, err: null });
 
-  React.useEffect(() => {
+  const doFetch = React.useCallback(() => {
     if (!providerToken) return;
-    setCal(prev => ({ ...prev, err: null }));
     Promise.all([
       _fetchCalendarEvents(providerToken, todayStr),
       _fetchCalendarEvents(providerToken, tomStr),
@@ -464,12 +463,17 @@ function CalendarWidget() {
       if (e.code === 401) {
         const fresh = await refreshProviderToken();
         if (!fresh) setCal(prev => ({ ...prev, err: 'session' }));
-        // fresh token → providerToken state updates → this effect re-runs automatically
       } else {
         setCal(prev => ({ ...prev, err: 'error' }));
       }
     });
-  }, [providerToken]);
+  }, [providerToken, todayStr, tomStr, refreshProviderToken]);
+
+  React.useEffect(() => {
+    doFetch();
+    const id = setInterval(doFetch, 10 * 60000); // re-fetch every 10 min
+    return () => clearInterval(id);
+  }, [doFetch]);
 
   const tagColor = t => ({
     show: "var(--red)", load: "var(--amber)", ops: "var(--blue)",
@@ -1399,14 +1403,19 @@ function NewsWidget() {
   const [err, setErr]         = React.useState(null);
   const [lastRefresh, setLastRefresh] = React.useState(null);
 
-  const load = React.useCallback(() => {
+  const load = React.useCallback((force) => {
+    if (force) { try { sessionStorage.removeItem(_NEWS_CACHE_KEY); } catch(e) {} }
     setLoading(true); setErr(null);
     _fetchNewsFeeds()
       .then(items => { setStories(items); setLoading(false); setLastRefresh(new Date()); })
       .catch(e => { setErr(e?.message || 'Unknown error'); setLoading(false); });
   }, []);
 
-  React.useEffect(load, [load]);
+  React.useEffect(() => {
+    load();
+    const id = setInterval(() => load(true), 30 * 60000); // force-refresh every 30 min
+    return () => clearInterval(id);
+  }, [load]);
 
   const cats = [
     { id: "all",      label: "All",      color: "var(--text-dim)" },
@@ -1452,7 +1461,7 @@ function NewsWidget() {
       </div>
       <div className="news-foot">
         <span>Refreshed {refreshLabel}</span>
-        <button onClick={load} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-faint)", fontSize: "inherit", padding: 0 }} className="news-refresh">↻ refresh</button>
+        <button onClick={() => load(true)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-faint)", fontSize: "inherit", padding: 0 }} className="news-refresh">↻ refresh</button>
       </div>
     </div>
   );
