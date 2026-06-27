@@ -471,7 +471,7 @@ function CalendarWidget() {
 
   React.useEffect(() => {
     doFetch();
-    const id = setInterval(doFetch, 10 * 60000); // re-fetch every 10 min
+    const id = setInterval(doFetch, 5 * 60000); // re-fetch every 5 min
     return () => clearInterval(id);
   }, [doFetch]);
 
@@ -521,6 +521,11 @@ function CalendarWidget() {
       <Col date={today} events={cal.today} isToday={true} />
       <div className="cal-divider" />
       <Col date={tomorrow} events={cal.tomorrow} isToday={false} />
+      <button
+        onClick={doFetch}
+        style={{ position: "absolute", top: 6, right: 8, background: "none", border: "none", cursor: "pointer", color: "var(--text-faint)", fontSize: "13px", padding: "2px 4px" }}
+        title="Refresh calendar"
+      >↻</button>
     </div>
   );
 }
@@ -533,23 +538,26 @@ function GmailWidget() {
   const [loading, setLoading]     = React.useState(true);
   const [err, setErr]             = React.useState(null);
 
-  const load = React.useCallback(() => {
-    if (!providerToken) { setLoading(false); return; }
-    setLoading(true); setErr(null);
+  const load = React.useCallback((silent) => {
+    if (!providerToken) { if (!silent) setLoading(false); return; }
+    if (!silent) { setLoading(true); setErr(null); }
     _fetchGmailMessages(providerToken)
-      .then(msgs => { setEmails(msgs); setLoading(false); })
+      .then(msgs => { setEmails(msgs); if (!silent) setLoading(false); })
       .catch(async e => {
         if (e.code === 401) {
           const fresh = await refreshProviderToken();
-          if (!fresh) { setErr('session'); setLoading(false); }
-          // fresh token → providerToken state updates → load re-runs automatically
+          if (!fresh && !silent) { setErr('session'); setLoading(false); }
         } else {
-          setErr('error'); setLoading(false);
+          if (!silent) { setErr('error'); setLoading(false); }
         }
       });
-  }, [providerToken]);
+  }, [providerToken, refreshProviderToken]);
 
-  React.useEffect(load, [load]);
+  React.useEffect(() => {
+    load();
+    const id = setInterval(() => load(true), 5 * 60000); // silent refresh every 5 min
+    return () => clearInterval(id);
+  }, [load]);
 
   const displayed = (emails || []).map(e => ({
     ...e,
@@ -571,7 +579,7 @@ function GmailWidget() {
           <span className="gmail-tab">Starred</span>
           <span className="gmail-tab">Sent</span>
         </div>
-        <button className="gmail-search" onClick={load} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+        <button className="gmail-search" onClick={() => load()} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
           <span className="search-icon" style={{ opacity: loading ? 0.4 : 1 }}>↻</span>
           <span className="search-placeholder">{loading ? 'Loading…' : 'Refresh'}</span>
         </button>
