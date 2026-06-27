@@ -18,7 +18,9 @@ const LAYOUTS = {
   showJournal:  { pos: { x: 360, y:  84 }, size: { w: 760, h: 600 } },
 };
 
-function toDateStr(d) { return d.toISOString().slice(0, 10); }
+function toDateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 function addDays(d, n) { return new Date(d.getTime() + n * 86400000); }
 
 function App({ session }) {

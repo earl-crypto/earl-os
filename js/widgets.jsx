@@ -1,5 +1,10 @@
 // All widget panels for Earl OS.
 
+// Returns YYYY-MM-DD in the user's local timezone (not UTC).
+function _localDateStr(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
 // ─── Google API helpers ───────────────────────────────────────────────────────
 
 async function _fetchGmailMessages(token) {
@@ -319,7 +324,7 @@ function PersonalWidget({ showDay, setShowDay, profile, setProfile }) {
     { q: "Follow your bliss and the universe will open doors for you where there were only walls.", a: "Joseph Campbell" },
   ];
   // Stable quote per calendar date
-  const dayKey = new Date().toISOString().slice(0, 10);
+  const dayKey = _localDateStr();
   const quote = quotes[Math.abs(dayKey.split("").reduce((a, c) => a + c.charCodeAt(0), 0)) % quotes.length];
 
   const statuses = [
@@ -405,8 +410,8 @@ function CalendarWidget() {
   const { providerToken, refreshProviderToken } = useData();
   const today    = new Date();
   const tomorrow = new Date(today.getTime() + 86400000);
-  const todayStr = today.toISOString().slice(0, 10);
-  const tomStr   = tomorrow.toISOString().slice(0, 10);
+  const todayStr = _localDateStr(today);
+  const tomStr   = _localDateStr(tomorrow);
   const fmt = d => d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 
   const [cal, setCal] = React.useState({ today: null, tomorrow: null, err: null });
@@ -674,7 +679,7 @@ function SaveToDriveBtn({ buildHtml, filename }) {
 
 // ─── PERSONAL JOURNAL ────────────────────────────────────────────────────────
 function PersonalJournal() {
-  const dayKey = new Date().toISOString().slice(0, 10);
+  const dayKey = _localDateStr();
   const { journalPersonal, updatePersonalJournal } = useData();
   const entry = journalPersonal[dayKey] || { mood: 3, energy: 3, grateful: "", reflection: "", win: "" };
   const update = (k, v) => updatePersonalJournal(dayKey, k, v);
@@ -739,7 +744,7 @@ function PersonalJournal() {
 
 // ─── SHOW JOURNAL (show days only) ───────────────────────────────────────────
 function ShowJournal() {
-  const dayKey = new Date().toISOString().slice(0, 10);
+  const dayKey = _localDateStr();
   const { journalShow, updateShowJournal, providerToken } = useData();
   const blank = {
     venue: "", crew_call: "", t_load_in: "", soundcheck: "", doors: "",
@@ -954,7 +959,7 @@ function ShowJournal() {
 // ─── REPEATING TASK LIST (office daily tasks) ────────────────────────────────
 function RepeatingTaskList({ accent, dimmed }) {
   const { getTasksForKind, toggleTask, addTask: ctxAddTask, removeTask: ctxRemoveTask } = useData();
-  const dateKey = new Date().toISOString().slice(0, 10);
+  const dateKey = _localDateStr();
   const tasks = getTasksForKind("office", dateKey);
   const [newText, setNewText] = React.useState("");
   const done = tasks.filter(t => t.done).length;
@@ -1066,7 +1071,7 @@ function ShowTaskPhase({ phase, showDate, active, isOpen, onToggle }) {
   const { getTasksForKind, toggleTask, addTask: ctxAddTask, removeTask: ctxRemoveTask } = useData();
   const kindMap = { pre: "show:pre", show: "show:day", post: "show:post" };
   const kind = kindMap[phase.id];
-  const scopeDate = showDate || new Date().toISOString().slice(0, 10);
+  const scopeDate = showDate || _localDateStr();
   const tasks = getTasksForKind(kind, scopeDate);
   const [newText, setNewText] = React.useState("");
   const done = tasks.filter(t => t.done).length;
@@ -1119,7 +1124,7 @@ function ShowTaskPhase({ phase, showDate, active, isOpen, onToggle }) {
 function ShowDatesManager({ dates, addDate, removeDate }) {
   const [newDate, setNewDate] = React.useState("");
   const sorted = [...dates].sort();
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = _localDateStr();
   const add = () => {
     if (!newDate || dates.includes(newDate)) return;
     addDate(newDate);
